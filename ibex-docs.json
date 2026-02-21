@@ -1,0 +1,2032 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Ibex Enterprise API",
+    "description": "Comprehensive API for accessing UK planning application data. Provides powerful search capabilities with geographic filtering and detailed application information.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://ibex.seractech.co.uk",
+      "description": "Production"
+    }
+  ],
+  "paths": {
+    "/search": {
+      "post": {
+        "tags": [
+          "Planning Applications"
+        ],
+        "summary": "Search for planning applications by location",
+        "description": "Find all planning applications within a specified radius from coordinates or within a custom polygon boundary. Returns detailed application data including decisions, appeals, and project classifications.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequestSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response, returning search data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SearchResponseSchema"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": [
+                      {
+                        "council_id": 240,
+                        "council_name": "Camden",
+                        "planning_reference": "2025/0970/P",
+                        "url": "https://planningrecords.camden.gov.uk/NECSWS/PlanningExplorer/Generic/StdDetails.aspx?PT=Planning Applications On-Line&TYPE=PL/PlanningPK.xml&PARAM0=654337&XSLT=/NECSWS/PlanningExplorer/SiteFiles/Skins/camden/xslt/PL/PLDetails.xslt&FT=Planning Application Details&PUBLIC=Y&XMLSIDE=&DAURI=PLANNING",
+                        "proposal": "Installation of paving, scooter storage unit and widening of existing garden gate to the rear.",
+                        "geometry": "POINT(528349 186246)",
+                        "raw_address": "6a Oak Court St Albans Villas London Camden NW5 1QU",
+                        "raw_application_type": "Full Planning Permission",
+                        "normalised_application_type": "full planning application",
+                        "application_date": "2025-04-01",
+                        "decided_date": "2025-05-08",
+                        "raw_decision": "Granted",
+                        "normalised_decision": "Approved",
+                        "centre_point": "POINT(528349 186246)",
+                        "appeals": null,
+                        "project_type": "home improvement",
+                        "heading": "Garden Access Improvements",
+                        "num_new_houses": 0,
+                        "num_comments_received": 2,
+                        "document_metadata": [
+                          {
+                            "date_published": "2025-04-01",
+                            "document_type": "APPLICATION_FORM",
+                            "description": "Application Form",
+                            "document_link": "https://planningrecords.camden.gov.uk/documents/654337/application-form.pdf"
+                          },
+                          {
+                            "date_published": "2025-04-01",
+                            "document_type": "SITE_PLAN",
+                            "description": "Site Location Plan",
+                            "document_link": "https://planningrecords.camden.gov.uk/documents/654337/site-plan.pdf"
+                          }
+                        ],
+                        "proposed_unit_mix": null,
+                        "proposed_floor_area": {
+                          "gross_internal_area_to_add_sqm": 15.5,
+                          "existing_gross_floor_area_sqm": 85,
+                          "proposed_gross_floor_area_sqm": 100.5,
+                          "floor_area_to_be_lost_sqm": 0,
+                          "floor_area_to_be_gained_sqm": 15.5
+                        }
+                      },
+                      {
+                        "council_id": 240,
+                        "council_name": "Camden",
+                        "planning_reference": "2025/1463/P",
+                        "url": "https://planningrecords.camden.gov.uk/NECSWS/PlanningExplorer/Generic/StdDetails.aspx?PT=Planning Applications On-Line&TYPE=PL/PlanningPK.xml&PARAM0=655954&XSLT=/NECSWS/PlanningExplorer/SiteFiles/Skins/camden/xslt/PL/PLDetails.xslt&FT=Planning Application Details&PUBLIC=Y&XMLSIDE=&DAURI=PLANNING",
+                        "proposal": "Erection of an outbuilding in rear garden.",
+                        "geometry": "POINT(528726 185963)",
+                        "raw_address": "Ground Floor Flat 37 Chetwynd Road London NW5 1BX",
+                        "raw_application_type": "Full Planning Permission",
+                        "normalised_application_type": "full planning application",
+                        "application_date": "2025-04-02",
+                        "decided_date": "2025-06-06",
+                        "raw_decision": "Granted",
+                        "normalised_decision": "Approved",
+                        "centre_point": "POINT(528726 185963)",
+                        "appeals": null,
+                        "project_type": "home improvement",
+                        "heading": "Outbuilding in Rear Garden",
+                        "num_new_houses": 0,
+                        "num_comments_received": 0,
+                        "document_metadata": [
+                          {
+                            "date_published": "2025-04-02",
+                            "document_type": "APPLICATION_FORM",
+                            "description": "Application Form",
+                            "document_link": "https://planningrecords.camden.gov.uk/documents/655954/application-form.pdf"
+                          }
+                        ],
+                        "proposed_unit_mix": null,
+                        "proposed_floor_area": {
+                          "gross_internal_area_to_add_sqm": 12,
+                          "existing_gross_floor_area_sqm": 0,
+                          "proposed_gross_floor_area_sqm": 12,
+                          "floor_area_to_be_lost_sqm": 0,
+                          "floor_area_to_be_gained_sqm": 12
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "default": {
+                    "value": {
+                      "message": "Bad Request",
+                      "error": "Invalid coordinates or search parameters provided"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - JWT could not be authorised",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "default": {
+                    "value": {
+                      "message": "Forbidden",
+                      "error": "JWT token is invalid or expired"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large - Response data exceeds size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "default": {
+                    "value": {
+                      "message": "Response too large please reduce search area or page size.",
+                      "error": "The response payload is too large to return"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "default": {
+                    "value": {
+                      "message": "Error",
+                      "error": "An unexpected error occurred while processing the request"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/applications": {
+      "post": {
+        "tags": [
+          "Planning Applications"
+        ],
+        "summary": "Search planning applications by date range and council",
+        "description": "Retrieve planning applications filtered by council ID, date ranges, and various application attributes. Supports keyword filtering and extensive data extensions.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationsRequestSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response, returning applications data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ApplicationsResponseSchema"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": [
+                      {
+                        "council_id": 10,
+                        "council_name": "Rochdale",
+                        "planning_reference": "24/00057/FUL",
+                        "url": "https://publicaccess.rochdale.gov.uk/online-applications/applicationDetails.do?keyVal=S7GSQONBGW800&activeTab=summary",
+                        "proposal": "Alterations to shop front and installation of external roller shutter. New ground floor access to the rear elevation. Application of render to front and rear elevations. Erection of timber fence and gate to the rear. Conversion of the first and second floors to two self-contained flats.",
+                        "raw_address": "119-119A Yorkshire Street Rochdale OL16 1DS",
+                        "raw_application_type": "Full Planning Application",
+                        "application_date": "2025-04-10T00:00:00.000Z",
+                        "decided_date": "2025-08-08T00:00:00.000Z",
+                        "normalised_application_type": "full planning application",
+                        "normalised_decision": "Approved",
+                        "raw_decision": "Grant subject to conditions",
+                        "geometry": "POLYGON((389887.2 413707.05,389882.9 413704.2,389878 413711.5,389875.2 413715.7,389874.7 413716.5,389867.6 413727.05,389869.05 413728,389872.1 413730.1,389873.65 413727.6,389879.1 413719.35,389880.05 413717.9,389887.2 413707.05))",
+                        "appeals": null,
+                        "project_type": "small residential",
+                        "heading": "2 Flats (Conversion/Alterations)",
+                        "num_new_houses": 2,
+                        "num_comments_received": 5,
+                        "document_metadata": [
+                          {
+                            "date_published": "2025-04-10",
+                            "document_type": "APPLICATION_FORM",
+                            "description": "Application Form",
+                            "document_link": "https://publicaccess.rochdale.gov.uk/documents/S7GSQONBGW800/application-form.pdf"
+                          },
+                          {
+                            "date_published": "2025-04-10",
+                            "document_type": "FLOOR_PLANS",
+                            "description": "Proposed Floor Plans",
+                            "document_link": "https://publicaccess.rochdale.gov.uk/documents/S7GSQONBGW800/floor-plans.pdf"
+                          }
+                        ],
+                        "proposed_unit_mix": {
+                          "total_existing_residential_units": 0,
+                          "total_proposed_residential_units": 2,
+                          "proposed_1_bed_units": 1,
+                          "proposed_2_bed_units": 1,
+                          "proposed_3_bed_units": 0,
+                          "proposed_4_plus_bed_units": 0,
+                          "affordable_housing_units": 0
+                        },
+                        "proposed_floor_area": {
+                          "gross_internal_area_to_add_sqm": 120,
+                          "existing_gross_floor_area_sqm": 180,
+                          "proposed_gross_floor_area_sqm": 300,
+                          "floor_area_to_be_lost_sqm": 0,
+                          "floor_area_to_be_gained_sqm": 120
+                        }
+                      },
+                      {
+                        "council_id": 10,
+                        "council_name": "Rochdale",
+                        "planning_reference": "25/00326/FUL",
+                        "url": "https://publicaccess.rochdale.gov.uk/online-applications/applicationDetails.do?keyVal=STQHOPNBGL800&activeTab=summary",
+                        "proposal": "Replacement fire escape stairway to side elevation",
+                        "raw_address": "Grapes Inn 69 Norden Road Rochdale OL11 5PN",
+                        "raw_application_type": "Full Planning Application",
+                        "application_date": "2025-04-08T00:00:00.000Z",
+                        "decided_date": "2025-06-03T00:00:00.000Z",
+                        "normalised_application_type": "full planning application",
+                        "normalised_decision": "Approved",
+                        "raw_decision": "Grant subject to conditions",
+                        "geometry": "POLYGON((386278.899 412954.102,386275.524 412947.66,386272.051 412938.069,386260.851 412937.397,386261.502 412940.396,386262.698 412946.305,386263.151 412948.554,386262.104 412948.654,386258.847 412948.954,386258.352 412948.554,386257.602 412948.054,386256.901 412947.654,386256.2 412947.354,386255.401 412947.154,386226.848 412945.305,386226.799 412945.755,386222.998 412945.555,386219.799 412945.355,386216.303 412988.303,386219.996 412987.453,386234.549 412984.054,386255.203 412979.595,386263.852 412977.696,386264.553 412977.546,386265.047 412977.446,386265.897 412977.296,386266.152 412977.246,386282.75 412974.297,386281.702 412968.998,386279.847 412959.101,386278.899 412954.102))",
+                        "appeals": null,
+                        "project_type": "mixed",
+                        "heading": "Fire Escape Stairway (Replacement)",
+                        "num_new_houses": 0,
+                        "num_comments_received": 1,
+                        "document_metadata": [
+                          {
+                            "date_published": "2025-04-08",
+                            "document_type": "APPLICATION_FORM",
+                            "description": "Application Form",
+                            "document_link": "https://publicaccess.rochdale.gov.uk/documents/STQHOPNBGL800/application-form.pdf"
+                          }
+                        ],
+                        "proposed_unit_mix": null,
+                        "proposed_floor_area": null
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "default": {
+                    "value": {
+                      "message": "Bad Request",
+                      "error": "Invalid date range or council ID provided"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - JWT could not be authorised",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "default": {
+                    "value": {
+                      "message": "Forbidden",
+                      "error": "JWT token is invalid or expired"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large - Response data exceeds size limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "default": {
+                    "value": {
+                      "message": "Response too large please reduce search area or page size.",
+                      "error": "The response payload is too large to return"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "default": {
+                    "value": {
+                      "message": "Error",
+                      "error": "An unexpected error occurred while processing the request"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stats": {
+      "post": {
+        "tags": [
+          "Planning Statistics"
+        ],
+        "summary": "Get council planning statistics",
+        "description": "Retrieve council-level planning statistics and performance metrics including application counts, decision times, and approval rates.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatsRequestSchema"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response, returning statistics data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsResponseSchema"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Invalid input parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - JWT could not be authorised",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "title": "Error Response",
+        "description": "Standard error response format returned when requests fail",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "A brief description of the error type",
+            "examples": [
+              "Bad Request"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "Detailed error message",
+            "examples": [
+              "Invalid input parameters provided"
+            ]
+          }
+        },
+        "required": [
+          "message",
+          "error"
+        ]
+      },
+      "SearchRequestSchema": {
+        "type": "object",
+        "title": "Search Request",
+        "properties": {
+          "input": {
+            "$ref": "#/components/schemas/SearchInputSchema"
+          },
+          "extensions": {
+            "$ref": "#/components/schemas/SearchExtensionsSchema"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/SearchFiltersSchema"
+          }
+        },
+        "required": [
+          "input"
+        ]
+      },
+      "DateInputSchema": {
+        "type": "object",
+        "title": "Date Range Filters",
+        "properties": {
+          "date_range_type": {
+            "description": "Type of date used for filtering. Must be defined if either date_to and date_from are provided",
+            "type": "string",
+            "enum": [
+              "validated",
+              "decided",
+              "any"
+            ],
+            "examples": [
+              "validated"
+            ]
+          },
+          "date_to": {
+            "type": "string",
+            "format": "date",
+            "description": "End date of applications",
+            "examples": [
+              "2025-05-01"
+            ]
+          },
+          "date_from": {
+            "type": "string",
+            "format": "date",
+            "description": "Start date of applications",
+            "examples": [
+              "2025-04-01"
+            ]
+          }
+        }
+      },
+      "GeometryInputSchema": {
+        "type": "object",
+        "title": "Search Area Definition",
+        "properties": {
+          "srid": {
+            "type": "number",
+            "description": "Valid SRID of input- currently we support 4326 (lat/long) or 27700 (easting/northing)",
+            "examples": [
+              27700
+            ]
+          }
+        },
+        "required": [
+          "srid"
+        ],
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/RadiusSearchSchema"
+          },
+          {
+            "$ref": "#/components/schemas/PolygonSearchSchema"
+          }
+        ]
+      },
+      "RadiusSearchSchema": {
+        "type": "object",
+        "title": "Radius Search Parameters",
+        "properties": {
+          "radius": {
+            "type": "number",
+            "format": "float",
+            "description": "Radius of the search area in metres",
+            "examples": [
+              300
+            ]
+          },
+          "coordinates": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "float"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "Coordinates of the center of the search area - either [long,lat] or [easting,northing]",
+            "examples": [
+              [
+                528583,
+                186088
+              ]
+            ]
+          }
+        },
+        "required": [
+          "radius",
+          "coordinates"
+        ]
+      },
+      "PolygonSearchSchema": {
+        "type": "object",
+        "title": "Polygon Search Parameters",
+        "properties": {
+          "polygon": {
+            "$ref": "#/components/schemas/PolygonRequestSchema"
+          }
+        },
+        "required": [
+          "polygon"
+        ]
+      },
+      "SearchInputSchema": {
+        "title": "Search Request Parameters",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/DateInputSchema"
+          },
+          {
+            "$ref": "#/components/schemas/GeometryInputSchema"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "page": {
+                "type": "number",
+                "description": "Page number - default is 1",
+                "examples": [
+                  1
+                ]
+              },
+              "page_size": {
+                "type": "number",
+                "description": "Number of applications per page - maximum and default is 5000",
+                "examples": [
+                  1000
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "PolygonRequestSchema": {
+        "type": "object",
+        "title": "Search Area Polygon",
+        "description": "Polygon defining the search area - in [long,lat] or [easting,northing]. Either this or 'radius' and 'coordinates' should be provided, but not both.",
+        "properties": {
+          "geometry": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "Polygon"
+                ]
+              },
+              "coordinates": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "format": "float"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                },
+                "examples": [
+                  [
+                    [
+                      [
+                        451000,
+                        205000
+                      ],
+                      [
+                        451500,
+                        205000
+                      ],
+                      [
+                        451500,
+                        204500
+                      ],
+                      [
+                        451000,
+                        204500
+                      ],
+                      [
+                        451000,
+                        205000
+                      ]
+                    ]
+                  ]
+                ]
+              }
+            }
+          }
+        }
+      },
+      "SearchFiltersSchema": {
+        "type": "object",
+        "title": "Search Filters",
+        "properties": {
+          "normalised_application_type": {
+            "$ref": "#/components/schemas/NormalisedApplicationTypeSchema"
+          },
+          "project_type": {
+            "$ref": "#/components/schemas/ProjectTypeSchema"
+          },
+          "normalised_decision": {
+            "$ref": "#/components/schemas/NormalisedDecisionSchema"
+          },
+          "num_new_houses": {
+            "$ref": "#/components/schemas/NumNewHousesFilterSchema"
+          }
+        }
+      },
+      "ProjectTypeSchema": {
+        "type": "array",
+        "description": "filters applications on the project type - multiple types can be a comma separated list",
+        "items": {
+          "type": "string",
+          "enum": [
+            "small residential",
+            "tree",
+            "large residential",
+            "home improvement",
+            "mixed",
+            "medium residential"
+          ]
+        },
+        "examples": [
+          [
+            "home improvement"
+          ]
+        ]
+      },
+      "ProjectTypeEnum": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "small residential",
+          "tree",
+          "large residential",
+          "home improvement",
+          "mixed",
+          "medium residential"
+        ]
+      },
+      "NormalisedDecisionSchema": {
+        "type": "array",
+        "description": "filters applications on the normalised decision - multiple types can be a comma separated list",
+        "items": {
+          "type": "string",
+          "enum": [
+            "Approved",
+            "Other",
+            "Refused",
+            "Unknown",
+            "Validated",
+            "Withdrawn"
+          ]
+        },
+        "examples": [
+          [
+            "Approved"
+          ]
+        ]
+      },
+      "NormalisedDecisionEnum": {
+        "type": "string",
+        "enum": [
+          "Approved",
+          "Other",
+          "Refused",
+          "Unknown",
+          "Validated",
+          "Withdrawn"
+        ]
+      },
+      "NormalisedApplicationTypeSchema": {
+        "type": "array",
+        "description": "filters applications on the project type - multiple types can be a comma separated list",
+        "items": {
+          "type": "string",
+          "enum": [
+            "non-material amendment",
+            "discharge of conditions",
+            "listed building consent",
+            "advertisement consent",
+            "householder planning application",
+            "tree preservation order",
+            "lawful development",
+            "change of use",
+            "full planning application",
+            "conservation area",
+            "utilities",
+            "unknown",
+            "environmental impact",
+            "section 106",
+            "pre-application",
+            "other"
+          ]
+        },
+        "examples": [
+          [
+            "full planning application"
+          ]
+        ]
+      },
+      "NormalisedApplicationTypeEnum": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "non-material amendment",
+          "discharge of conditions",
+          "listed building consent",
+          "advertisement consent",
+          "householder planning application",
+          "tree preservation order",
+          "lawful development",
+          "change of use",
+          "full planning application",
+          "conservation area",
+          "utilities",
+          "unknown",
+          "environmental impact",
+          "section 106",
+          "pre-application",
+          "other"
+        ]
+      },
+      "NumNewHousesFilterSchema": {
+        "type": "object",
+        "description": "Filter applications by number of new houses",
+        "properties": {
+          "min": {
+            "type": "integer",
+            "description": "Minimum number of new houses",
+            "examples": [
+              1
+            ]
+          },
+          "max": {
+            "type": "integer",
+            "description": "Maximum number of new houses",
+            "examples": [
+              100
+            ]
+          }
+        }
+      },
+      "ProposedUnitMixSchema": {
+        "type": "object",
+        "description": "Residential unit breakdown from extracted application forms",
+        "properties": {
+          "total_existing_residential_units": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "examples": [
+              0
+            ]
+          },
+          "total_proposed_residential_units": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "examples": [
+              12
+            ]
+          },
+          "proposed_1_bed_units": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "examples": [
+              4
+            ]
+          },
+          "proposed_2_bed_units": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "examples": [
+              5
+            ]
+          },
+          "proposed_3_bed_units": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "examples": [
+              2
+            ]
+          },
+          "proposed_4_plus_bed_units": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "examples": [
+              1
+            ]
+          },
+          "affordable_housing_units": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "examples": [
+              3
+            ]
+          },
+          "proposed_terraced_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Number of proposed terraced homes",
+            "examples": [
+              0
+            ]
+          },
+          "proposed_semi_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Number of proposed semi-detached homes",
+            "examples": [
+              0
+            ]
+          },
+          "proposed_detached_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Number of proposed detached homes",
+            "examples": [
+              4
+            ]
+          },
+          "proposed_flat_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Number of proposed flats/apartments",
+            "examples": [
+              8
+            ]
+          },
+          "proposed_market_units": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Number of market rate units",
+            "examples": [
+              9
+            ]
+          },
+          "proposed_affordable_units": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Number of affordable housing units (all types)",
+            "examples": [
+              3
+            ]
+          },
+          "proposed_shared_ownership_units": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Number of shared ownership units",
+            "examples": [
+              1
+            ]
+          },
+          "proposed_social_rent_units": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Number of social rent units",
+            "examples": [
+              2
+            ]
+          },
+          "units_to_be_added": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "Detailed breakdown of units to be added",
+            "items": {
+              "$ref": "#/components/schemas/UnitBreakdownItemSchema"
+            }
+          },
+          "units_to_be_lost": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "Detailed breakdown of units to be lost/demolished",
+            "items": {
+              "$ref": "#/components/schemas/UnitBreakdownItemSchema"
+            }
+          }
+        }
+      },
+      "UnitBreakdownItemSchema": {
+        "type": "object",
+        "description": "Individual unit type/tenure/bedroom combination",
+        "properties": {
+          "residential_unit_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Type of dwelling (e.g. House, Flat, Bungalow, Semi-Detached)",
+            "examples": [
+              "House"
+            ]
+          },
+          "tenure": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Tenure type (e.g. Market Housing, Social Rent, Shared Ownership)",
+            "examples": [
+              "Market Housing"
+            ]
+          },
+          "development_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Type of development (e.g. New Build, Conversion)",
+            "examples": [
+              "New Build"
+            ]
+          },
+          "number_of_units": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Number of units in this category",
+            "examples": [
+              10
+            ]
+          },
+          "bedrooms_per_unit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Number of bedrooms per unit",
+            "examples": [
+              3
+            ]
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Housing provider (e.g. Private, Housing Association)",
+            "examples": [
+              "Private"
+            ]
+          },
+          "gia_per_unit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Gross internal area per unit in sqm",
+            "examples": [
+              85.5
+            ]
+          }
+        }
+      },
+      "ProposedFloorAreaSchema": {
+        "type": "object",
+        "description": "Floor area data from extracted application forms",
+        "properties": {
+          "gross_internal_area_to_add_sqm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "examples": [
+              150.5
+            ]
+          },
+          "existing_gross_floor_area_sqm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "examples": [
+              200
+            ]
+          },
+          "proposed_gross_floor_area_sqm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "examples": [
+              350.5
+            ]
+          },
+          "floor_area_to_be_lost_sqm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "examples": [
+              0
+            ]
+          },
+          "floor_area_to_be_gained_sqm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "examples": [
+              150.5
+            ]
+          }
+        }
+      },
+      "DocumentMetadataItemSchema": {
+        "type": "object",
+        "description": "Metadata about a document associated with the application",
+        "properties": {
+          "date_published": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "examples": [
+              "2024-01-15"
+            ]
+          },
+          "document_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "APPLICATION_FORM"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "Application Form"
+            ]
+          },
+          "document_link": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "https://..."
+            ]
+          }
+        }
+      },
+      "SearchExtensionsSchema": {
+        "type": "object",
+        "title": "Search Extensions",
+        "properties": {
+          "appeals": {
+            "type": "boolean",
+            "examples": [
+              true
+            ]
+          },
+          "centre_point": {
+            "type": "boolean",
+            "examples": [
+              true
+            ]
+          },
+          "heading": {
+            "type": "boolean",
+            "examples": [
+              true
+            ]
+          },
+          "unlimited_radius": {
+            "type": "boolean",
+            "description": "toggle this as true to receive results outside of the 500m radius limit",
+            "examples": [
+              true
+            ]
+          },
+          "project_type": {
+            "type": "boolean",
+            "examples": [
+              true
+            ]
+          },
+          "num_new_houses": {
+            "type": "boolean",
+            "description": "Include number of new houses from extraction classifier",
+            "examples": [
+              true
+            ]
+          },
+          "document_metadata": {
+            "type": "boolean",
+            "description": "Include document metadata (date published, document type, description, link)",
+            "examples": [
+              true
+            ]
+          },
+          "proposed_unit_mix": {
+            "type": "boolean",
+            "description": "Include residential unit breakdown from extracted application forms",
+            "examples": [
+              true
+            ]
+          },
+          "proposed_floor_area": {
+            "type": "boolean",
+            "description": "Include floor area data from extracted application forms",
+            "examples": [
+              true
+            ]
+          },
+          "num_comments_received": {
+            "type": "boolean",
+            "description": "Include number of public comments received",
+            "examples": [
+              true
+            ]
+          }
+        }
+      },
+      "BaseApplicationsSchema": {
+        "type": "object",
+        "title": "Core Application Data",
+        "description": "Base planning application information shared across all application response types",
+        "properties": {
+          "council_id": {
+            "type": "integer",
+            "examples": [
+              240
+            ]
+          },
+          "council_name": {
+            "type": "string",
+            "examples": [
+              "Camden"
+            ]
+          },
+          "planning_reference": {
+            "type": "string",
+            "examples": [
+              "2025/0970/P"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "examples": [
+              "https://planningrecords.camden.gov.uk/NECSWS/PlanningExplorer/Generic/StdDetails.aspx?PT=Planning Applications On-Line&TYPE=PL/PlanningPK.xml&PARAM0=654337&XSLT=/NECSWS/PlanningExplorer/SiteFiles/Skins/camden/xslt/PL/PLDetails.xslt&FT=Planning Application Details&PUBLIC=Y&XMLSIDE=&DAURI=PLANNING"
+            ]
+          },
+          "proposal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "Installation of paving, scooter storage unit and widening of existing garden gate to the rear."
+            ]
+          },
+          "raw_address": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "6a Oak Court St Albans Villas London Camden NW5 1QU"
+            ]
+          },
+          "raw_application_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "Full Planning Permission"
+            ]
+          },
+          "normalised_application_type": {
+            "$ref": "#/components/schemas/NormalisedApplicationTypeEnum"
+          },
+          "application_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "examples": [
+              "2025-04-01"
+            ]
+          },
+          "decided_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "examples": [
+              "2025-05-08"
+            ]
+          },
+          "raw_decision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "Granted"
+            ]
+          },
+          "normalised_decision": {
+            "$ref": "#/components/schemas/NormalisedDecisionEnum"
+          },
+          "geometry": {
+            "type": "string",
+            "examples": [
+              "POINT(528349 186246)"
+            ]
+          }
+        },
+        "required": [
+          "council_id",
+          "council_name",
+          "planning_reference",
+          "url",
+          "proposal",
+          "raw_address",
+          "raw_application_type",
+          "normalised_application_type",
+          "application_date",
+          "decided_date",
+          "raw_decision",
+          "normalised_decision",
+          "geometry"
+        ]
+      },
+      "AppealsSchema": {
+        "type": "object",
+        "title": "Planning Appeal Information",
+        "description": "Details about planning appeals associated with applications, including outcomes and timelines",
+        "properties": {
+          "appeal_ref": {
+            "type": "string",
+            "examples": [
+              "APP/N4720/D/23/3334962"
+            ]
+          },
+          "appeal_url": {
+            "type": "string",
+            "examples": [
+              "https://acp.planninginspectorate.gov.uk/ViewCase.aspx?CaseID=3334962&CoID=0"
+            ]
+          },
+          "start_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "examples": [
+              "2023-01-01"
+            ]
+          },
+          "decision_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "examples": [
+              "2023-04-04"
+            ]
+          },
+          "decision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "Dismissed"
+            ]
+          },
+          "case_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "Householder (HAS) Appeal"
+            ]
+          }
+        }
+      },
+      "SearchResponseSchema": {
+        "title": "Search Response",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseApplicationsSchema"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "appeals": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/AppealsSchema"
+                },
+                "description": "Appeals associated with this application (only present if appeals extension requested)"
+              },
+              "project_type": {
+                "$ref": "#/components/schemas/ProjectTypeEnum"
+              },
+              "centre_point": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Center point of the geometry (only present if centre_point extension requested)",
+                "examples": [
+                  "POINT(412603.7631578947 135275.0657894737)"
+                ]
+              },
+              "heading": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "examples": [
+                  "Double storey extension"
+                ]
+              },
+              "num_new_houses": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Number of new houses from extraction classifier (only present if num_new_houses extension requested)",
+                "examples": [
+                  5
+                ]
+              },
+              "document_metadata": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/DocumentMetadataItemSchema"
+                },
+                "description": "Document metadata (only present if document_metadata extension requested)"
+              },
+              "proposed_unit_mix": {
+                "$ref": "#/components/schemas/ProposedUnitMixSchema",
+                "nullable": true,
+                "description": "Residential unit breakdown (only present if proposed_unit_mix extension requested)"
+              },
+              "proposed_floor_area": {
+                "$ref": "#/components/schemas/ProposedFloorAreaSchema",
+                "nullable": true,
+                "description": "Floor area data (only present if proposed_floor_area extension requested)"
+              },
+              "num_comments_received": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Number of public comments received (only present if num_comments_received extension requested)",
+                "examples": [
+                  5
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "ApplicationsFiltersSchema": {
+        "type": "object",
+        "title": "Application Search Filters",
+        "description": "Optional filters to narrow down application search results by type and keywords",
+        "properties": {
+          "normalised_application_type": {
+            "$ref": "#/components/schemas/NormalisedApplicationTypeSchema"
+          },
+          "keywords": {
+            "type": "array",
+            "description": "Filters applications on keywords present in the proposal",
+            "items": {
+              "type": "string",
+              "examples": [
+                "elevation"
+              ]
+            }
+          },
+          "normalised_decision": {
+            "$ref": "#/components/schemas/NormalisedDecisionSchema"
+          },
+          "num_new_houses": {
+            "$ref": "#/components/schemas/NumNewHousesFilterSchema"
+          }
+        }
+      },
+      "ApplicationsExtensionsSchema": {
+        "type": "object",
+        "title": "Application Data Extensions",
+        "description": "Optional data extensions to include additional information like appeals and project details",
+        "properties": {
+          "project_type": {
+            "type": "boolean"
+          },
+          "heading": {
+            "type": "boolean"
+          },
+          "appeals": {
+            "type": "boolean"
+          },
+          "num_new_houses": {
+            "type": "boolean",
+            "description": "Include number of new houses from extraction classifier"
+          },
+          "document_metadata": {
+            "type": "boolean",
+            "description": "Include document metadata (date published, document type, description, link)"
+          },
+          "proposed_unit_mix": {
+            "type": "boolean",
+            "description": "Include residential unit breakdown from extracted application forms"
+          },
+          "proposed_floor_area": {
+            "type": "boolean",
+            "description": "Include floor area data from extracted application forms"
+          },
+          "num_comments_received": {
+            "type": "boolean",
+            "description": "Include number of public comments received"
+          }
+        }
+      },
+      "ApplicationsInputSchema": {
+        "type": "object",
+        "title": "Application Search Parameters",
+        "description": "Input parameters for searching planning applications by date range and council",
+        "properties": {
+          "date_range_type": {
+            "description": "Type of date used for filtering. If empty, assumes any",
+            "type": "string",
+            "enum": [
+              "validated",
+              "decided",
+              "any"
+            ]
+          },
+          "date_to": {
+            "type": "string",
+            "format": "date",
+            "description": "End date of applications",
+            "examples": [
+              "2025-05-01"
+            ]
+          },
+          "date_from": {
+            "type": "string",
+            "format": "date",
+            "description": "Start date of applications",
+            "examples": [
+              "2025-04-01"
+            ]
+          },
+          "council_id": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "examples": [
+                10
+              ]
+            },
+            "description": "List of council ids to search within"
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number - default is 1",
+            "examples": [
+              1
+            ]
+          },
+          "page_size": {
+            "type": "number",
+            "description": "Number of applications per page - maximum and default is 1000",
+            "examples": [
+              1000
+            ]
+          }
+        },
+        "required": [
+          "date_to",
+          "date_from"
+        ]
+      },
+      "ApplicationsRequestSchema": {
+        "type": "object",
+        "title": "Applications Search Request",
+        "properties": {
+          "input": {
+            "$ref": "#/components/schemas/ApplicationsInputSchema"
+          },
+          "extensions": {
+            "$ref": "#/components/schemas/ApplicationsExtensionsSchema"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ApplicationsFiltersSchema"
+          }
+        },
+        "required": [
+          "input"
+        ]
+      },
+      "ApplicationsResponseSchema": {
+        "title": "Application Details",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseApplicationsSchema"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "project_type": {
+                "$ref": "#/components/schemas/ProjectTypeEnum"
+              },
+              "heading": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "examples": [
+                  "Double storey extension"
+                ]
+              },
+              "appeals": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/AppealsSchema"
+                },
+                "description": "Appeals associated with this application (only present if appeals extension requested)"
+              },
+              "num_new_houses": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Number of new houses from extraction classifier (only present if num_new_houses extension requested)",
+                "examples": [
+                  5
+                ]
+              },
+              "document_metadata": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/DocumentMetadataItemSchema"
+                },
+                "description": "Document metadata (only present if document_metadata extension requested)"
+              },
+              "proposed_unit_mix": {
+                "$ref": "#/components/schemas/ProposedUnitMixSchema",
+                "nullable": true,
+                "description": "Residential unit breakdown (only present if proposed_unit_mix extension requested)"
+              },
+              "proposed_floor_area": {
+                "$ref": "#/components/schemas/ProposedFloorAreaSchema",
+                "nullable": true,
+                "description": "Floor area data (only present if proposed_floor_area extension requested)"
+              },
+              "num_comments_received": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Number of public comments received (only present if num_comments_received extension requested)",
+                "examples": [
+                  5
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "CouncilDevelopmentActivityLevelEnum": {
+        "type": "string",
+        "description": "Development activity level for the council",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      "AverageDecisionTimeSchema": {
+        "type": "object",
+        "title": "Average Decision Time by Project Type",
+        "description": "Average decision time in days for each project type. Null values indicate insufficient data.",
+        "properties": {
+          "small residential": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Average days to decision for small residential projects",
+            "examples": [
+              45
+            ]
+          },
+          "tree": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Average days to decision for tree-related applications",
+            "examples": [
+              28
+            ]
+          },
+          "large residential": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Average days to decision for large residential projects",
+            "examples": [
+              120
+            ]
+          },
+          "home improvement": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Average days to decision for home improvement projects",
+            "examples": [
+              35
+            ]
+          },
+          "mixed": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Average days to decision for mixed-use projects",
+            "examples": [
+              65
+            ]
+          },
+          "medium residential": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Average days to decision for medium residential projects",
+            "examples": [
+              75
+            ]
+          }
+        }
+      },
+      "NumberOfApplicationsSchema": {
+        "type": "object",
+        "title": "Number of Applications by Type",
+        "description": "Count of applications for each normalised application type within the specified period",
+        "properties": {
+          "non-material amendment": {
+            "type": "integer",
+            "description": "Number of non-material amendment applications",
+            "examples": [
+              150
+            ]
+          },
+          "discharge of conditions": {
+            "type": "integer",
+            "description": "Number of discharge of conditions applications",
+            "examples": [
+              200
+            ]
+          },
+          "listed building consent": {
+            "type": "integer",
+            "description": "Number of listed building consent applications",
+            "examples": [
+              45
+            ]
+          },
+          "advertisement consent": {
+            "type": "integer",
+            "description": "Number of advertisement consent applications",
+            "examples": [
+              80
+            ]
+          },
+          "householder planning application": {
+            "type": "integer",
+            "description": "Number of householder planning applications",
+            "examples": [
+              500
+            ]
+          },
+          "tree preservation order": {
+            "type": "integer",
+            "description": "Number of tree preservation order applications",
+            "examples": [
+              120
+            ]
+          },
+          "lawful development": {
+            "type": "integer",
+            "description": "Number of lawful development applications",
+            "examples": [
+              90
+            ]
+          },
+          "change of use": {
+            "type": "integer",
+            "description": "Number of change of use applications",
+            "examples": [
+              60
+            ]
+          },
+          "full planning application": {
+            "type": "integer",
+            "description": "Number of full planning applications",
+            "examples": [
+              350
+            ]
+          },
+          "conservation area": {
+            "type": "integer",
+            "description": "Number of conservation area applications",
+            "examples": [
+              30
+            ]
+          },
+          "utilities": {
+            "type": "integer",
+            "description": "Number of utilities applications",
+            "examples": [
+              25
+            ]
+          },
+          "unknown": {
+            "type": "integer",
+            "description": "Number of applications with unknown type",
+            "examples": [
+              10
+            ]
+          },
+          "environmental impact": {
+            "type": "integer",
+            "description": "Number of environmental impact applications",
+            "examples": [
+              5
+            ]
+          },
+          "section 106": {
+            "type": "integer",
+            "description": "Number of section 106 applications",
+            "examples": [
+              15
+            ]
+          },
+          "pre-application": {
+            "type": "integer",
+            "description": "Number of pre-application enquiries",
+            "examples": [
+              100
+            ]
+          },
+          "other": {
+            "type": "integer",
+            "description": "Number of other application types",
+            "examples": [
+              40
+            ]
+          }
+        }
+      },
+      "StatsRequestSchema": {
+        "type": "object",
+        "title": "Stats Request",
+        "properties": {
+          "input": {
+            "type": "object",
+            "properties": {
+              "council_id": {
+                "type": "integer",
+                "description": "Council ID to get statistics for",
+                "examples": [
+                  1
+                ]
+              },
+              "date_from": {
+                "type": "string",
+                "format": "date",
+                "description": "Start date for statistics period",
+                "examples": [
+                  "2024-01-01"
+                ]
+              },
+              "date_to": {
+                "type": "string",
+                "format": "date",
+                "description": "End date for statistics period",
+                "examples": [
+                  "2025-01-01"
+                ]
+              }
+            },
+            "required": [
+              "council_id",
+              "date_from",
+              "date_to"
+            ]
+          }
+        },
+        "required": [
+          "input"
+        ]
+      },
+      "StatsResponseSchema": {
+        "type": "object",
+        "title": "Stats Response",
+        "description": "Council-level planning statistics and performance metrics",
+        "properties": {
+          "council_development_activity_level": {
+            "$ref": "#/components/schemas/CouncilDevelopmentActivityLevelEnum"
+          },
+          "approval_rate": {
+            "type": "number",
+            "description": "Percentage of applications approved within the specified period",
+            "examples": [
+              85.5
+            ]
+          },
+          "refusal_rate": {
+            "type": "number",
+            "description": "Percentage of applications refused within the specified period",
+            "examples": [
+              14.5
+            ]
+          },
+          "average_decision_time": {
+            "$ref": "#/components/schemas/AverageDecisionTimeSchema"
+          },
+          "number_of_applications": {
+            "$ref": "#/components/schemas/NumberOfApplicationsSchema"
+          },
+          "number_of_new_homes_approved": {
+            "type": "integer",
+            "description": "Total number of new homes approved within the specified period",
+            "examples": [
+              250
+            ]
+          }
+        },
+        "required": [
+          "council_development_activity_level",
+          "approval_rate",
+          "refusal_rate",
+          "average_decision_time",
+          "number_of_applications",
+          "number_of_new_homes_approved"
+        ]
+      }
+    }
+  },
+  "x-ext-urls": {}
+}

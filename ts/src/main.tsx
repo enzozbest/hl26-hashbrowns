@@ -5,6 +5,8 @@ import './index.css'
 import App from './App.tsx'
 import Home from './pages/Home.tsx'
 import About from './pages/About.tsx'
+import Chat from './pages/Chat.tsx'
+import Map from './pages/Map.tsx'
 import NotFound from './pages/NotFound.tsx'
 
 const router = createBrowserRouter([
@@ -13,6 +15,8 @@ const router = createBrowserRouter([
     element: <App />,
     children: [
       { index: true, element: <Home /> },
+      { path: 'chat', element: <Chat /> },
+      { path: 'map', element: <Map /> },
       { path: 'about', element: <About /> },
       { path: '*', element: <NotFound /> },
     ],
