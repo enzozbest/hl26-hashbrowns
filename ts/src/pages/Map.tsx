@@ -160,7 +160,7 @@ export default function MapPage() {
   }, [])
 
   if (!state) {
-    return <Navigate to="/chat" replace />
+    return <Navigate to="/" replace />
   }
 
   const { boroughs } = state.result
@@ -204,7 +204,7 @@ export default function MapPage() {
   }
 
   return (
-    <div className="relative flex-1" style={{ background: BG_COLOR }}>
+    <div className="relative h-screen w-screen" style={{ background: BG_COLOR }}>
       {loading ? (
         <div className="h-full flex items-center justify-center text-gray-500">
           Loading map data...
