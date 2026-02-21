@@ -1,7 +1,8 @@
-import {useState} from 'react'
+import {useState, useRef, useEffect} from 'react'
 import MapBackground from '../components/MapBackground'
 import {submitQuery} from "../api/client.ts";
 import {useNavigate} from 'react-router-dom'
+import {REGION_NAMES} from '../data/regions'
 
 // ── Palette ─────────────────────────────────────────────────────────────────
 const C = {
@@ -21,69 +22,128 @@ const C = {
     inputBg: 'rgba(255, 255, 255, 0.03)',
 }
 
-const RISK = {
-    low: {colour: '#6b8f5e', label: 'Low risk'},
-    medium: {colour: '#c8962a', label: 'Med. risk'},
-    high: {colour: '#b85c38', label: 'High risk'},
+
+const DEV_TYPES = ['Residential', 'Commercial', 'Mixed Use', 'Extension / Conversion', 'Industrial', 'Educational']
+const SCALES    = ['Small (1–10 units)', 'Medium (11–50 units)', 'Large (50+ units)']
+
+// Shared tile style helpers — keep all colours from palette
+const tileSel   = { background: 'rgba(200, 150, 42, 0.15)', border: `1px solid ${C.accent}`,   color: C.accent  }
+const tileUnsel = { background: 'rgba(255,255,255,0.03)',    border: `1px solid ${C.border}`,   color: C.textMuted }
+
+function RegionDropdown({ value, onChange }: {
+    value:    string | null
+    onChange: (v: string | null) => void
+}) {
+    const [open, setOpen] = useState(false)
+    const ref = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        if (!open) return
+        function onOutsideClick(e: MouseEvent) {
+            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+        }
+        document.addEventListener('mousedown', onOutsideClick)
+        return () => document.removeEventListener('mousedown', onOutsideClick)
+    }, [open])
+
+    return (
+        <div ref={ref} style={{position: 'relative'}}>
+
+            {/* Trigger button */}
+            <button
+                type="button"
+                onClick={() => setOpen(o => !o)}
+                style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    fontFamily: 'Inter, sans-serif',
+                    fontSize: '0.8rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                    ...(value ? tileSel : tileUnsel),
+                    ...(open && {borderColor: C.borderFocus}),
+                }}
+            >
+                <span style={{color: value ? C.accent : C.textMuted}}>
+                    {value ?? 'Select a region…'}
+                </span>
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none"
+                     style={{flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.18s'}}>
+                    <path d="M2 4L6 8L10 4"
+                          stroke={value ? C.accent : C.textFaint}
+                          strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+            </button>
+
+            {/* Option list */}
+            {open && (
+                <div style={{
+                    position:       'absolute',
+                    top:            'calc(100% + 3px)',
+                    left:           0,
+                    right:          0,
+                    zIndex:         50,
+                    background:     'rgba(12, 8, 4, 0.98)',
+                    border:         `1px solid ${C.border}`,
+                    backdropFilter: 'blur(12px)',
+                    maxHeight:      '260px',
+                    overflowY:      'auto',
+                }}>
+                    {REGION_NAMES.map((r) => {
+                        const isSelected = value === r
+                        return (
+                            <button
+                                key={r}
+                                type="button"
+                                onClick={() => { onChange(r); setOpen(false) }}
+                                style={{
+                                    display:     'block',
+                                    width:       '100%',
+                                    textAlign:   'left',
+                                    padding:     '8px 12px',
+                                    fontFamily:  'Inter, sans-serif',
+                                    fontSize:    '0.8rem',
+                                    fontWeight:  isSelected ? 600 : 400,
+                                    color:       isSelected ? C.accent : C.textMuted,
+                                    background:  isSelected ? 'rgba(200,150,42,0.12)' : 'transparent',
+                                    border:      'none',
+                                    borderLeft:  `2px solid ${isSelected ? C.accent : 'transparent'}`,
+                                    cursor:      'pointer',
+                                    transition:  'background 0.12s',
+                                }}
+                                onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(200,150,42,0.06)' }}
+                                onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
+                            >
+                                {r}
+                            </button>
+                        )
+                    })}
+                </div>
+            )}
+        </div>
+    )
 }
 
-const HISTORY: {
-    id: number
-    title: string
-    location: string
-    date: string
-    snippet: string
-    risk: keyof typeof RISK
-    pinned: boolean
-}[] = [
-    {
-        id: 1,
-        title: 'Battersea Power Station',
-        location: 'SW8 · Lambeth',
-        date: '14 Feb 2026',
-        snippet: '180-unit mixed-use residential scheme on former industrial land adjacent to the Thames riverside corridor.',
-        risk: 'low',
-        pinned: true,
-    },
-    {
-        id: 2,
-        title: 'Canary Wharf East',
-        location: 'E14 · Tower Hamlets',
-        date: '12 Feb 2026',
-        snippet: 'Class A office tower, 32 storeys. Site falls within flood zone 3 with tidal surge risk implications.',
-        risk: 'high',
-        pinned: false,
-    },
-    {
-        id: 3,
-        title: "King's Cross Retail",
-        location: 'N1C · Camden',
-        date: '10 Feb 2026',
-        snippet: 'Ground-floor retail and F&B units as part of a wider regeneration masterplan around St Pancras.',
-        risk: 'medium',
-        pinned: false,
-    },
-]
-
 export default function Home() {
-    const [proposal, setProposal] = useState('')
-    //const [loading, setLoading] = useState(false)
-    //const [error, setError] = useState<string | null>(null)
+    const [devType,  setDevType]  = useState<string | null>(null)
+    const [region,   setRegion]   = useState<string | null>(null)
+    const [scale,    setScale]    = useState<string | null>(null)
     const navigate = useNavigate()
+
+    const allSelected = !!(devType && region && scale)
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
-        if (!proposal.trim()) return
-
-        //setLoading(true)
-        //setError(null)
-
+        if (!allSelected) return
+        const query = `${devType}, ${scale}, region: ${region}`
         try {
-            const data = await submitQuery(proposal.trim())
-            navigate('/map', {state: {query: proposal.trim(), result: data}})
+            const data = await submitQuery(query)
+            navigate('/map', {state: {query, result: data, region}})
         } catch (err) {
-            //setError(err instanceof Error ? err.message : 'Something went wrong')
-            //setLoading(false)
             console.log("Error: ", err)
         }
     }
@@ -103,18 +163,6 @@ export default function Home() {
                 {/* ── Left: headline ── */}
                 <div className="flex-1 flex items-center px-16 py-16">
                     <div className="max-w-lg">
-
-                        {/* Brand */}
-                        <div className="flex items-center gap-2.5 mb-12">
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                                <rect x="1" y="1" width="12" height="12"
-                                      stroke={C.accent} strokeWidth="1.5" transform="rotate(45 7 7)"/>
-                            </svg>
-                            <span style={{fontFamily: 'Inter, sans-serif', letterSpacing: '0.18em', color: C.accent}}
-                                  className="text-[11px] font-medium uppercase">
-                Clearance
-              </span>
-                        </div>
 
                         {/* Annotation rule */}
                         <div className="flex items-center gap-3 mb-8">
@@ -185,134 +233,83 @@ export default function Home() {
                            style={{fontFamily: 'Inter, sans-serif', letterSpacing: '0.24em', color: C.textFaint}}>
                             Proposal Input
                         </p>
-                        <h2 className="text-[1.05rem] font-semibold mb-4"
+                        <h2 className="text-[1.05rem] font-semibold mb-5"
                             style={{fontFamily: 'Inter, sans-serif', color: C.text}}>
-                            Describe your proposal — development type, scale, and intended use. e.g. "50-unit
-                            residential scheme, mid-rise, predominantly affordable housing"
+                            Define your development parameters
                         </h2>
 
-                        <textarea
-                            value={proposal}
-                            onChange={(e) => setProposal(e.target.value)}
-                            placeholder="Enter the key details of your planning proposal — development type, location, scale, intended use, and any known site constraints or sensitivities..."
-                            rows={7}
-                            className="w-full p-4 text-[0.875rem] leading-relaxed resize-none focus:outline-none transition-colors duration-200"
-                            style={{
-                                fontFamily: 'Inter, sans-serif',
-                                background: C.inputBg,
-                                border: `1px solid ${C.border}`,
-                                color: C.text,
-                            }}
-                            onFocus={(e) => (e.currentTarget.style.borderColor = C.borderFocus)}
-                            onBlur={(e) => (e.currentTarget.style.borderColor = C.border)}
-                        />
-
-                        <button
-                            onClick={handleSubmit}
-                            disabled={!proposal.trim()}
-                            className="mt-4 w-full py-3.5 text-[0.875rem] font-medium cursor-pointer disabled:cursor-default"
-                            style={{
-                                fontFamily: 'Inter, sans-serif',
-                                letterSpacing: '0.06em',
-                                background: proposal.trim() ? C.accentBtn : C.accentFaint,
-                                color: C.text,
-                                transition: 'background 0.2s',
-                            }}
-                            onMouseEnter={(e) => {
-                                if (proposal.trim()) e.currentTarget.style.background = C.accentHover
-                            }}
-                            onMouseLeave={(e) => {
-                                if (proposal.trim()) e.currentTarget.style.background = C.accentBtn
-                            }}
-                        >
-                            Analyse Proposal
-                        </button>
-                    </div>
-
-                    {/* ── History section ── */}
-                    <div>
-                        {/* Section heading */}
-                        <div className="flex items-center gap-3 mb-3">
-              <span className="text-[10px] font-medium uppercase"
-                    style={{fontFamily: 'Inter, sans-serif', letterSpacing: '0.22em', color: C.textFaint}}>
-                Recent Reports
-              </span>
-                            <div className="flex-1 h-px" style={{background: C.border}}/>
-                        </div>
-
-                        {/* History cards */}
-                        <div className="grid grid-cols-3 gap-3">
-                            {HISTORY.map((item) => (
+                        {/* ── Step 1: Development Type ── */}
+                        <p className="text-[10px] font-medium uppercase mb-2"
+                           style={{fontFamily: 'Inter, sans-serif', letterSpacing: '0.22em', color: C.textFaint}}>
+                            01 — Development Type
+                        </p>
+                        <div className="grid grid-cols-3 gap-2 mb-5">
+                            {DEV_TYPES.map((t) => (
                                 <button
-                                    key={item.id}
-                                    className="relative text-left cursor-pointer group"
+                                    key={t}
+                                    type="button"
+                                    onClick={() => setDevType(t)}
+                                    className="py-2 px-3 text-left text-[0.8rem] font-medium"
                                     style={{
-                                        background: C.cardAlt,
-                                        border: `1px solid ${C.border}`,
-                                        padding: '12px 14px',
-                                        transition: 'border-color 0.18s',
+                                        fontFamily: 'Inter, sans-serif',
+                                        transition: 'all 0.15s',
+                                        ...(devType === t ? tileSel : tileUnsel),
                                     }}
-                                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = C.accentDim)}
-                                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = C.border)}
                                 >
-                                    {/* Coloured left spine */}
-                                    <span className="absolute left-0 top-0 bottom-0 w-[3px]"
-                                          style={{background: RISK[item.risk].colour}}/>
-
-                                    {/* Pinned badge */}
-                                    {item.pinned && (
-                                        <span
-                                            className="absolute top-2 right-2 text-[8px] font-medium uppercase px-1.5 py-0.5"
-                                            style={{
-                                                fontFamily: 'Inter, sans-serif',
-                                                letterSpacing: '0.12em',
-                                                background: C.accentFaint,
-                                                color: C.accent,
-                                            }}>
-                      Pinned
-                    </span>
-                                    )}
-
-                                    <p className="text-[0.8rem] font-semibold leading-tight mb-0.5 pr-10"
-                                       style={{fontFamily: 'Inter, sans-serif', color: C.text}}>
-                                        {item.title}
-                                    </p>
-                                    <p className="text-[10px] mb-2"
-                                       style={{
-                                           fontFamily: 'Inter, sans-serif',
-                                           color: C.textFaint,
-                                           letterSpacing: '0.04em'
-                                       }}>
-                                        {item.location} · {item.date}
-                                    </p>
-                                    <p className="text-[0.75rem] leading-snug mb-3"
-                                       style={{
-                                           fontFamily: 'Inter, sans-serif',
-                                           color: C.textMuted,
-                                           display: '-webkit-box',
-                                           WebkitLineClamp: 2,
-                                           WebkitBoxOrient: 'vertical',
-                                           overflow: 'hidden',
-                                       }}>
-                                        {item.snippet}
-                                    </p>
-
-                                    {/* Risk badge */}
-                                    <div className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full"
-                          style={{background: RISK[item.risk].colour}}/>
-                                        <span className="text-[10px] font-medium"
-                                              style={{
-                                                  fontFamily: 'Inter, sans-serif',
-                                                  color: RISK[item.risk].colour,
-                                                  letterSpacing: '0.06em',
-                                              }}>
-                      {RISK[item.risk].label}
-                    </span>
-                                    </div>
+                                    {t}
                                 </button>
                             ))}
                         </div>
+
+                        {/* ── Step 2: Region ── */}
+                        <p className="text-[10px] font-medium uppercase mb-2"
+                           style={{fontFamily: 'Inter, sans-serif', letterSpacing: '0.22em', color: C.textFaint}}>
+                            02 — Region
+                        </p>
+                        <div className="mb-5">
+                            <RegionDropdown value={region} onChange={setRegion} />
+                        </div>
+
+                        {/* ── Step 3: Scale ── */}
+                        <p className="text-[10px] font-medium uppercase mb-2"
+                           style={{fontFamily: 'Inter, sans-serif', letterSpacing: '0.22em', color: C.textFaint}}>
+                            03 — Scale
+                        </p>
+                        <div className="flex gap-2 mb-5">
+                            {SCALES.map((s) => (
+                                <button
+                                    key={s}
+                                    type="button"
+                                    onClick={() => setScale(s)}
+                                    className="flex-1 py-2 px-3 text-[0.8rem] font-medium"
+                                    style={{
+                                        fontFamily: 'Inter, sans-serif',
+                                        transition: 'all 0.15s',
+                                        ...(scale === s ? tileSel : tileUnsel),
+                                    }}
+                                >
+                                    {s}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* ── Submit ── */}
+                        <button
+                            onClick={handleSubmit}
+                            disabled={!allSelected}
+                            className="w-full py-3.5 text-[0.875rem] font-medium cursor-pointer disabled:cursor-default"
+                            style={{
+                                fontFamily: 'Inter, sans-serif',
+                                letterSpacing: '0.06em',
+                                background: allSelected ? C.accentBtn : C.accentFaint,
+                                color: C.text,
+                                transition: 'background 0.2s',
+                            }}
+                            onMouseEnter={(e) => { if (allSelected) e.currentTarget.style.background = C.accentHover }}
+                            onMouseLeave={(e) => { if (allSelected) e.currentTarget.style.background = C.accentBtn }}
+                        >
+                            Analyse Proposal
+                        </button>
                     </div>
 
                 </div>
