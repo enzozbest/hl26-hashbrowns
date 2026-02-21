@@ -1,0 +1,301 @@
+----1-----
+
+"input": {
+    "date_range_type": "validated",
+    "date_to": "2025-05-01",
+    "date_from": "2025-04-01",
+    "srid": 27700,
+    "radius": 300,
+    "coordinates": [
+      528583,
+      186088
+    ],
+    "page": 1,
+    "page_size": 1000
+  },
+  "extensions": {
+    "appeals": true,
+    "centre_point": true,
+    "heading": true,
+    "unlimited_radius": true,
+    "project_type": true,
+    "num_new_houses": true,
+    "document_metadata": true,
+    "proposed_unit_mix": true,
+    "proposed_floor_area": true,
+    "num_comments_received": true
+  },
+  "filters": {
+    "normalised_application_type": [
+      "full planning application"
+    ],
+    "project_type": [
+      "home improvement"
+    ],
+    "normalised_decision": [
+      "Approved"
+    ],
+    "num_new_houses": {
+      "min": 1,
+      "max": 100
+    }
+  }
+}'
+
+[
+  {
+    "council_id": 240,
+    "council_name": "Camden",
+    "planning_reference": "2025/0970/P",
+    "url": "https://planningrecords.camden.gov.uk/NECSWS/PlanningExplorer/Generic/StdDetails.aspx?PT=Planning Applications On-Line&TYPE=PL/PlanningPK.xml&PARAM0=654337&XSLT=/NECSWS/PlanningExplorer/SiteFiles/Skins/camden/xslt/PL/PLDetails.xslt&FT=Planning Application Details&PUBLIC=Y&XMLSIDE=&DAURI=PLANNING",
+    "proposal": "Installation of paving, scooter storage unit and widening of existing garden gate to the rear.",
+    "geometry": "POINT(528349 186246)",
+    "raw_address": "6a Oak Court St Albans Villas London Camden NW5 1QU",
+    "raw_application_type": "Full Planning Permission",
+    "normalised_application_type": "full planning application",
+    "application_date": "2025-04-01",
+    "decided_date": "2025-05-08",
+    "raw_decision": "Granted",
+    "normalised_decision": "Approved",
+    "centre_point": "POINT(528349 186246)",
+    "appeals": null,
+    "project_type": "home improvement",
+    "heading": "Garden Access Improvements",
+    "num_new_houses": 0,
+    "num_comments_received": 2,
+    "document_metadata": [
+      {
+        "date_published": "2025-04-01",
+        "document_type": "APPLICATION_FORM",
+        "description": "Application Form",
+        "document_link": "https://planningrecords.camden.gov.uk/documents/654337/application-form.pdf"
+      },
+      {
+        "date_published": "2025-04-01",
+        "document_type": "SITE_PLAN",
+        "description": "Site Location Plan",
+        "document_link": "https://planningrecords.camden.gov.uk/documents/654337/site-plan.pdf"
+      }
+    ],
+    "proposed_unit_mix": null,
+    "proposed_floor_area": {
+      "gross_internal_area_to_add_sqm": 15.5,
+      "existing_gross_floor_area_sqm": 85,
+      "proposed_gross_floor_area_sqm": 100.5,
+      "floor_area_to_be_lost_sqm": 0,
+      "floor_area_to_be_gained_sqm": 15.5
+    }
+  },
+  {
+    "council_id": 240,
+    "council_name": "Camden",
+    "planning_reference": "2025/1463/P",
+    "url": "https://planningrecords.camden.gov.uk/NECSWS/PlanningExplorer/Generic/StdDetails.aspx?PT=Planning Applications On-Line&TYPE=PL/PlanningPK.xml&PARAM0=655954&XSLT=/NECSWS/PlanningExplorer/SiteFiles/Skins/camden/xslt/PL/PLDetails.xslt&FT=Planning Application Details&PUBLIC=Y&XMLSIDE=&DAURI=PLANNING",
+    "proposal": "Erection of an outbuilding in rear garden.",
+    "geometry": "POINT(528726 185963)",
+    "raw_address": "Ground Floor Flat 37 Chetwynd Road London NW5 1BX",
+    "raw_application_type": "Full Planning Permission",
+    "normalised_application_type": "full planning application",
+    "application_date": "2025-04-02",
+    "decided_date": "2025-06-06",
+    "raw_decision": "Granted",
+    "normalised_decision": "Approved",
+    "centre_point": "POINT(528726 185963)",
+    "appeals": null,
+    "project_type": "home improvement",
+    "heading": "Outbuilding in Rear Garden",
+    "num_new_houses": 0,
+    "num_comments_received": 0,
+    "document_metadata": [
+      {
+        "date_published": "2025-04-02",
+        "document_type": "APPLICATION_FORM",
+        "description": "Application Form",
+        "document_link": "https://planningrecords.camden.gov.uk/documents/655954/application-form.pdf"
+      }
+    ],
+    "proposed_unit_mix": null,
+    "proposed_floor_area": {
+      "gross_internal_area_to_add_sqm": 12,
+      "existing_gross_floor_area_sqm": 0,
+      "proposed_gross_floor_area_sqm": 12,
+      "floor_area_to_be_lost_sqm": 0,
+      "floor_area_to_be_gained_sqm": 12
+    }
+  }
+]
+
+---2---
+
+  "input": {
+    "date_range_type": "validated",
+    "date_to": "2025-05-01",
+    "date_from": "2025-04-01",
+    "council_id": [
+      10
+    ],
+    "page": 1,
+    "page_size": 1000
+  },
+  "extensions": {
+    "project_type": true,
+    "heading": true,
+    "appeals": true,
+    "num_new_houses": true,
+    "document_metadata": true,
+    "proposed_unit_mix": true,
+    "proposed_floor_area": true,
+    "num_comments_received": true
+  },
+  "filters": {
+    "normalised_application_type": [
+      "full planning application"
+    ],
+    "keywords": [
+      "elevation"
+    ],
+    "normalised_decision": [
+      "Approved"
+    ],
+    "num_new_houses": {
+      "min": 1,
+      "max": 100
+    }
+  }
+}'
+
+----3----
+
+  "applications": [
+    [
+      2,
+      "23/00306/HOU"
+    ],
+    [
+      2,
+      "23/00237/LBC"
+    ],
+    [
+      240,
+      "2025/0970/P"
+    ]
+  ],
+  "extensions": {
+    "documents": true,
+    "appeals": true,
+    "project_type": true,
+    "heading": true
+  }
+}'
+[
+  {
+    "council_id": 2,
+    "council_name": "Adur",
+    "planning_reference": "23/00306/HOU",
+    "url": "https://planning.adur-worthing.gov.uk/online-applications/applicationDetails.do?activeTab=summary&keyVal=ABCD1234",
+    "proposal": "Single storey rear extension and loft conversion with rear dormer",
+    "raw_address": "14 Example Street, Shoreham-by-Sea, BN43 5AB",
+    "raw_application_type": "Householder Application",
+    "normalised_application_type": "householder planning application",
+    "application_date": "2023-04-15",
+    "decided_date": "2023-06-20",
+    "raw_decision": "Approved",
+    "normalised_decision": "Approved",
+    "geometry": "POINT(523456 104567)",
+    "project_type": "home improvement",
+    "heading": "Single Storey Extension and Loft Conversion",
+    "appeals": null,
+    "documents": [
+      {
+        "id": 12345,
+        "s3Link": "https://dev-serac-pdf-scraper.s3.eu-west-2.amazonaws.com/2/23!00306!HOU/application-form.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=...&X-Amz-Expires=86400&X-Amz-Signature=...",
+        "documentTypes": [
+          "APPLICATION_FORM"
+        ]
+      },
+      {
+        "id": 12346,
+        "s3Link": "https://dev-serac-pdf-scraper.s3.eu-west-2.amazonaws.com/2/23!00306!HOU/location-plan.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=...&X-Amz-Expires=86400&X-Amz-Signature=...",
+        "documentTypes": [
+          "LOCATION_PLAN"
+        ]
+      },
+      {
+        "id": 12347,
+        "s3Link": "https://dev-serac-pdf-scraper.s3.eu-west-2.amazonaws.com/2/23!00306!HOU/proposed-elevations.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=...&X-Amz-Expires=86400&X-Amz-Signature=...",
+        "documentTypes": [
+          "PROPOSED_ELEVATION_PLAN"
+        ]
+      }
+    ]
+  },
+  {
+    "council_id": 240,
+    "council_name": "Camden",
+    "planning_reference": "2025/0970/P",
+    "url": "https://planningrecords.camden.gov.uk/...",
+    "proposal": "Installation of paving and scooter storage unit",
+    "raw_address": "6a Oak Court St Albans Villas London NW5 1QU",
+    "raw_application_type": "Full Planning Permission",
+    "normalised_application_type": "full planning application",
+    "application_date": "2025-04-01",
+    "decided_date": "2025-05-08",
+    "raw_decision": "Granted",
+    "normalised_decision": "Approved",
+    "geometry": "POINT(528349 186246)",
+    "project_type": "home improvement",
+    "heading": "Garden Access Improvements",
+    "appeals": null,
+    "documents": [
+      {
+        "id": 67890,
+        "s3Link": "https://dev-serac-pdf-scraper.s3.eu-west-2.amazonaws.com/240/2025!0970!P/application-form.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=...&X-Amz-Expires=86400&X-Amz-Signature=...",
+        "documentTypes": [
+          "APPLICATION_FORM",
+          "LOCATION_PLAN"
+        ]
+      }
+    ]
+  }
+]
+
+----4----
+
+  "input": {
+    "council_id": 1,
+    "date_from": "2024-01-01",
+    "date_to": "2025-01-01"
+  }
+}'
+{
+  "council_development_activity_level": "low",
+  "approval_rate": 85.5,
+  "refusal_rate": 14.5,
+  "average_decision_time": {
+    "small residential": 45,
+    "tree": 28,
+    "large residential": 120,
+    "home improvement": 35,
+    "mixed": 65,
+    "medium residential": 75
+  },
+  "number_of_applications": {
+    "non-material amendment": 150,
+    "discharge of conditions": 200,
+    "listed building consent": 45,
+    "advertisement consent": 80,
+    "householder planning application": 500,
+    "tree preservation order": 120,
+    "lawful development": 90,
+    "change of use": 60,
+    "full planning application": 350,
+    "conservation area": 30,
+    "utilities": 25,
+    "unknown": 10,
+    "environmental impact": 5,
+    "section 106": 15,
+    "pre-application": 100,
+    "other": 40
+  },
+  "number_of_new_homes_approved": 250
+}
