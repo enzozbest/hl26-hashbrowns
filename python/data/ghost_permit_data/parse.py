@@ -1,7 +1,7 @@
-import glob
 from datetime import datetime
+from pathlib import Path
 
-import pandas as pd
+DATA_DIR = Path(__file__).resolve().parent
 
 
 def looks_like_date(value):
@@ -16,10 +16,10 @@ def looks_like_date(value):
 def parse_data():
     records = []
 
-    files = sorted(glob.glob("20*.csv"))
+    files = sorted(DATA_DIR.glob("20*.csv"))
 
     for file in files:
-        with open(file, "r", encoding="utf-8", errors="ignore") as f:
+        with open(str(file), "r", encoding="utf-8", errors="ignore") as f:
             next(f)  # skip header
 
             for line in f:

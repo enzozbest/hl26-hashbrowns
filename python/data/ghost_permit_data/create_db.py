@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from ghost_permit_data.parse import parse_data
+from data.ghost_permit_data.parse import parse_data
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DB_PATH = PROJECT_ROOT / "planning_applications.db"
@@ -10,12 +10,12 @@ def get_db_path():
     return DB_PATH
 
 
-def init_db():
-    conn = sqlite3.connect(get_db_path())
+def init_db(db_path):
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS planning_data (
+        CREATE TABLE IF NOT EXISTS ghost_permit_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             lpa_number TEXT,
             borough TEXT
@@ -26,12 +26,12 @@ def init_db():
     conn.close()
 
 
-def insert_records(records):
-    conn = sqlite3.connect(get_db_path())
+def insert_records(records, db_path):
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     cursor.executemany("""
-        INSERT INTO planning_data (lpa_number, borough)
+        INSERT INTO ghost_permit_data (lpa_number, borough)
         VALUES (?, ?)
     """, records)
 
@@ -39,7 +39,11 @@ def insert_records(records):
     conn.close()
 
 
-if __name__ == "__main__":
-    init_db()
+def populate_db(db_path):
+    init_db(db_path)
     data = parse_data()
-    insert_records(data)
+    insert_records(data, db_path)
+
+
+if __name__ == "__main__":
+    populate_db(DB_PATH)
