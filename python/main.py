@@ -1,5 +1,5 @@
 def main():
-    print("Hello from hl26-hashbrowns!")
+    print("Hello from python!")
 
 
 if __name__ == "__main__":
