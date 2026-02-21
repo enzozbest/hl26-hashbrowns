@@ -150,3 +150,22 @@ Built-in UK geography database with no external dependencies:
 
 - Python 3.14+
 - See [requirements.txt](requirements.txt)
+
+
+
+ScoringResult (dataclass) — the return type, carrying:
+
+stats: BoroughStats — raw borough statistics
+base_approval_score: int — approval rate minus constraint penalties, clamped 0–100; this is the starting point for ApprovalPrediction.score
+approval_by_type: dict[str, float] — per normalised_application_type approval rate
+applied_penalties: list[tuple[str, int]] — e.g. [("Conservation area", 20), ("Article 4", 10)]
+BoroughScorer — stateless class with:
+
+Method	What it does
+score(applications, borough_name, flags, council_id)	Main entry point; falls back to mock when list is empty
+_approval_by_type(apps)	Groups by normalised_application_type, computes approval % per type
+_avg_decision_weeks(apps)	application_date → decided_date in weeks; skips missing/implausible
+_detect_trend(apps)	Last-2-years vs prior approval rate; returns None if < 3 samples per window
+_apply_penalties(rate, flags)	Subtracts flood (−15), conservation area (−20), green belt (−25), article 4 (−10)
+infer_constraints(apps)	Classmethod — detects conservation area, listed building, TPO, article 4 from application types and proposal text; flood/green belt left for GIS
+_mock_score(borough_name, flags)	Deterministic mock seeded on borough name
