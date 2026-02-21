@@ -188,7 +188,6 @@ class IbexClient:
                 "srid": srid,
                 "coordinates": coordinates,
                 "radius": radius,
-                "normalised decision type": ""
             }
         }
         if date_from:
