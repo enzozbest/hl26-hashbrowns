@@ -250,9 +250,9 @@ class BaseApplicationsSchema(BaseModel):
     council_id: int
     council_name: str
     planning_reference: str
-    url: str
+    url: Optional[str] = None
     normalised_decision: NormalisedDecision
-    geometry: str
+    geometry: Optional[str] = None
 
     # Optional base fields
     proposal: Optional[str] = None
