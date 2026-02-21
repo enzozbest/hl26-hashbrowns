@@ -1,2 +1,13 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #0a0f1a;
+}
