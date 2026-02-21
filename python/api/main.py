@@ -4,6 +4,8 @@ Endpoints:
     POST /api/parse    — Parse a query into a structured ParsedIntent
     POST /api/plan     — Parse + show what API queries would be made (dry run)
     POST /api/search   — Full pipeline: parse → orchestrate → return results
+    POST /api/report   — Due diligence report: parse → IBex → score → rank (JSON)
+    POST /api/report/pdf — Same pipeline, returns a downloadable PDF file
     GET  /api/councils — Council lookup for frontend autocomplete
     GET  /api/adapters — Registered adapters and their status
     GET  /api/health   — Health check
@@ -20,6 +22,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from intent_parser.adapters.constraints import ConstraintsAdapter
@@ -31,6 +34,9 @@ from intent_parser.llm_parser import IntentParseError, parse_query, parse_query_
 from intent_parser.location import UK_COUNCILS
 from intent_parser.schema import ParsedIntent
 
+from analysis.agent import DueDiligenceAgent
+from hashbrowns.config import settings as ibex_settings
+
 from .orchestrator import SearchOrchestrator
 
 # ---------------------------------------------------------------------------
@@ -38,15 +44,18 @@ from .orchestrator import SearchOrchestrator
 # ---------------------------------------------------------------------------
 
 orchestrator = SearchOrchestrator()
+dd_agent: DueDiligenceAgent | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Register all data-source adapters at startup.
+    """Register all data-source adapters and start the due diligence agent.
 
     Each adapter gracefully degrades to returning empty results when its
     credentials / data files are not configured.
     """
+    global dd_agent
+
     orchestrator.register(IBexAdapter(
         api_token=os.getenv("IBEX_API_TOKEN"),
         base_url=os.getenv("IBEX_BASE_URL", "https://api.ibexenterprise.com"),
@@ -63,7 +72,11 @@ async def lifespan(app: FastAPI):
     orchestrator.register(ConstraintsAdapter(
         data_dir=os.getenv("CONSTRAINTS_DATA_DIR"),
     ))
-    yield
+
+    dd_agent = DueDiligenceAgent(ibex_settings, parse_fn=_parse)
+    async with dd_agent:
+        yield
+    dd_agent = None
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +174,59 @@ async def search_endpoint(body: QueryRequest) -> dict[str, Any]:
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Search failed: {exc}")
     return results
+
+
+@app.post("/api/report")
+async def report_endpoint(body: QueryRequest) -> dict[str, Any]:
+    """Due diligence report: parse → IBex → score → rank boroughs.
+
+    Returns a ranked list of :class:`SiteViabilityReport` objects — one per
+    candidate borough — with approval predictions, comparables, and
+    key considerations.
+    """
+    if dd_agent is None:
+        raise HTTPException(status_code=503, detail="Due diligence agent not ready")
+
+    try:
+        reports = await dd_agent.run(body.query)
+    except IntentParseError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Report generation failed: {exc}")
+
+    return {
+        "reports": [r.model_dump(mode="json") for r in reports],
+        "count": len(reports),
+        "top_borough": reports[0].borough if reports else None,
+    }
+
+
+@app.post("/api/report/pdf")
+async def report_pdf_endpoint(body: QueryRequest) -> Response:
+    """Generate a PDF due diligence report.
+
+    Returns a downloadable PDF file with executive summary, per-borough
+    analysis, comparable applications, constraint flags, decision
+    timeline, and legal disclaimer.
+    """
+    if dd_agent is None:
+        raise HTTPException(status_code=503, detail="Due diligence agent not ready")
+
+    try:
+        reports = await dd_agent.run(body.query)
+    except IntentParseError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Report generation failed: {exc}")
+
+    from analysis.report_generator import generate_report
+
+    pdf_bytes = generate_report(reports, query=body.query)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="due_diligence_report.pdf"'},
+    )
 
 
 @app.get("/api/councils")
