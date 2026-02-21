@@ -4,4 +4,4 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = ["pydantic>=2.0"]
+dependencies = ["pydantic>=2.0", "google-genai>=1.0", "fastapi>=0.115.0", "uvicorn>=0.30.0"]
