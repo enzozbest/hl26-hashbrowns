@@ -1,13 +1,20 @@
-"""Post-hoc probability calibration via temperature scaling.
+"""Post-hoc probability calibration via Platt scaling (temperature + bias).
 
 After training, a neural network's predicted probabilities are often
 *miscalibrated* — a prediction of "80 % approved" may actually correspond
-to a 65 % empirical rate.  Temperature scaling learns a single scalar
-*T* > 0 that stretches or compresses the logit distribution so that
-``sigmoid(logit / T)`` produces well-calibrated probabilities.
+to a 65 % empirical rate.  Platt scaling learns a temperature *T* > 0 and
+a bias *b* such that ``sigmoid((logit + b) / T)`` produces well-calibrated
+probabilities.
+
+Fitting has two phases:
+
+1. **NLL phase** — LBFGS minimises binary cross-entropy on the validation
+   set (the classic approach from Guo et al. 2017).
+2. **ECE phase** — SGD fine-tunes the parameters using a differentiable
+   ECE proxy to directly push ECE towards zero.
 
 The :class:`TemperatureScaler` is fitted on the **validation set** (never
-the training set) using LBFGS to minimise the negative log-likelihood.
+the training set).
 """
 
 from __future__ import annotations
@@ -17,6 +24,7 @@ import pickle
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -27,19 +35,84 @@ from model.approval_model import ApprovalModel
 logger = logging.getLogger(__name__)
 
 
+# ── Differentiable ECE proxy ─────────────────────────────────────────────────
+
+
+def _differentiable_ece(
+    probs: torch.Tensor,
+    labels: torch.Tensor,
+    n_bins: int = 15,
+    sharpness: float = 30.0,
+) -> torch.Tensor:
+    """Soft-binned ECE that is differentiable w.r.t. *probs*.
+
+    Uses sigmoid-based soft bin membership instead of hard thresholding so
+    gradients flow through the bin assignment.
+
+    Args:
+        probs: Predicted probabilities, shape ``(N,)``.
+        labels: Binary ground-truth, shape ``(N,)``.
+        n_bins: Number of equal-width bins.
+        sharpness: Controls how sharply the soft bins approximate hard bins.
+            Higher = closer to hard ECE but noisier gradients.
+    """
+    bin_edges = torch.linspace(0.0, 1.0, n_bins + 1, device=probs.device)
+    ece = torch.tensor(0.0, device=probs.device)
+    n = probs.shape[0]
+
+    for i in range(n_bins):
+        lo, hi = bin_edges[i], bin_edges[i + 1]
+        # Soft membership: product of two sigmoids gives a smooth indicator
+        weight = (
+            torch.sigmoid(sharpness * (probs - lo))
+            * torch.sigmoid(sharpness * (hi - probs))
+        )
+        count = weight.sum()
+        if count < 1.0:
+            continue
+        avg_conf = (weight * probs).sum() / count
+        avg_acc = (weight * labels).sum() / count
+        ece = ece + (count / n) * torch.abs(avg_acc - avg_conf)
+
+    return ece
+
+
+def _hard_ece(
+    probs: np.ndarray,
+    labels: np.ndarray,
+    n_bins: int = 15,
+) -> float:
+    """Standard (non-differentiable) ECE for logging."""
+    bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
+    ece = 0.0
+    n = len(labels)
+    if n == 0:
+        return 0.0
+    for lo, hi in zip(bin_edges[:-1], bin_edges[1:]):
+        mask = (probs > lo) & (probs <= hi)
+        count = mask.sum()
+        if count == 0:
+            continue
+        ece += (count / n) * abs(probs[mask].mean() - labels[mask].mean())
+    return float(ece)
+
+
 class TemperatureScaler(nn.Module):
-    """Single-parameter temperature scaler for binary logits.
+    """Platt scaler for binary logits (temperature + bias).
+
+    Learns ``P(y=1) = sigmoid((logit + bias) / temperature)`` to produce
+    well-calibrated probabilities.  The bias term (absent in pure temperature
+    scaling) helps correct systematic over- or under-prediction, which is
+    common with imbalanced datasets or focal-loss training.
 
     After :meth:`fit`, call :meth:`calibrate` to convert raw logits into
     calibrated probabilities.
-
-    Attributes:
-        temperature: Learned temperature parameter (initialised to 1.5).
     """
 
     def __init__(self) -> None:
         super().__init__()
         self.temperature = nn.Parameter(torch.ones(1) * 1.5)
+        self.bias = nn.Parameter(torch.zeros(1))
 
     # ── fitting ─────────────────────────────────────────────────────────
 
@@ -67,29 +140,44 @@ class TemperatureScaler(nn.Module):
 
         return torch.cat(all_logits), torch.cat(all_labels)
 
+    def _scaled_logits(self, logits: torch.Tensor) -> torch.Tensor:
+        """Apply Platt scaling: ``(logits + bias) / temperature``."""
+        return (logits + self.bias) / self.temperature
+
     def fit(
         self,
         model: ApprovalModel,
         val_loader: DataLoader,
         *,
         lr: float = 0.01,
-        max_iter: int = 50,
+        max_iter: int = 200,
+        ece_lr: float = 0.001,
+        ece_steps: int = 500,
+        target_ece: float = 0.03,
         device: Optional[torch.device] = None,
     ) -> float:
-        """Optimise temperature *T* on the validation set.
+        """Optimise temperature *T* and bias *b* on the validation set.
 
-        Uses LBFGS to minimise the binary cross-entropy (NLL) of
-        ``sigmoid(logit / T)`` against the true labels.
+        **Phase 1 (NLL):** LBFGS minimises the binary cross-entropy of
+        ``sigmoid((logit + b) / T)`` against the true labels. Multiple
+        outer steps run until convergence.
+
+        **Phase 2 (ECE):** If ECE is still above *target_ece*, Adam
+        fine-tunes *T* and *b* using a differentiable ECE proxy to
+        directly minimise calibration error.
 
         Args:
             model: Trained (frozen) :class:`ApprovalModel`.
             val_loader: Validation DataLoader.
-            lr: LBFGS learning rate.
-            max_iter: LBFGS maximum iterations.
+            lr: LBFGS learning rate for Phase 1.
+            max_iter: Max LBFGS iterations per outer step.
+            ece_lr: Adam learning rate for Phase 2.
+            ece_steps: Max gradient steps for Phase 2.
+            target_ece: Stop Phase 2 early when ECE drops below this.
             device: Device for optimisation (inferred from model if *None*).
 
         Returns:
-            Final NLL loss after optimisation.
+            Learned temperature value.
         """
         if device is None:
             device = next(model.parameters()).device
@@ -97,55 +185,167 @@ class TemperatureScaler(nn.Module):
         logits, labels = self._collect_logits(model, val_loader, device)
         self.to(device)
 
+        # ── Phase 1: NLL optimisation via LBFGS ──────────────────────
         optimizer = torch.optim.LBFGS(
-            [self.temperature], lr=lr, max_iter=max_iter,
+            [self.temperature, self.bias],
+            lr=lr,
+            max_iter=max_iter,
+            tolerance_grad=1e-9,
+            tolerance_change=1e-12,
         )
 
-        final_loss = torch.tensor(0.0)
+        prev_loss = float("inf")
+        for step in range(20):  # multiple outer steps for convergence
+            def _closure() -> torch.Tensor:
+                optimizer.zero_grad()
+                scaled = self._scaled_logits(logits)
+                loss = F.binary_cross_entropy_with_logits(scaled, labels)
+                loss.backward()
+                return loss
 
-        def _closure() -> torch.Tensor:
-            nonlocal final_loss
-            optimizer.zero_grad()
-            scaled = logits / self.temperature
-            loss = F.binary_cross_entropy_with_logits(scaled, labels)
-            loss.backward()
-            final_loss = loss.detach()
-            return loss
+            loss = optimizer.step(_closure)
+            loss_val = loss.item() if isinstance(loss, torch.Tensor) else loss
+            if abs(prev_loss - loss_val) < 1e-10:
+                logger.info("  NLL converged at outer step %d", step + 1)
+                break
+            prev_loss = loss_val
 
-        optimizer.step(_closure)
+        # Compute ECE after Phase 1
+        with torch.no_grad():
+            probs_np = torch.sigmoid(self._scaled_logits(logits)).cpu().numpy()
+            labels_np = labels.cpu().numpy()
+        ece_after_nll = _hard_ece(probs_np, labels_np)
 
         logger.info(
-            "Temperature scaling fitted: T=%.4f  NLL=%.4f",
+            "Phase 1 (NLL): T=%.4f  b=%.4f  NLL=%.4f  ECE=%.4f",
             self.temperature.item(),
-            final_loss.item(),
+            self.bias.item(),
+            prev_loss,
+            ece_after_nll,
         )
-        return final_loss.item()
+
+        # ── Phase 2: ECE fine-tuning via Adam ────────────────────────
+        if ece_after_nll > target_ece:
+            logger.info(
+                "Phase 2 (ECE): fine-tuning to push ECE below %.4f …",
+                target_ece,
+            )
+
+            # Use combined loss: NLL + ECE weight to maintain good NLL
+            # while driving ECE down
+            ece_optimizer = torch.optim.Adam(
+                [self.temperature, self.bias], lr=ece_lr,
+            )
+            ece_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                ece_optimizer, mode="min", factor=0.5, patience=50,
+            )
+
+            best_ece = ece_after_nll
+            best_state = {
+                "temperature": self.temperature.data.clone(),
+                "bias": self.bias.data.clone(),
+            }
+
+            for step in range(1, ece_steps + 1):
+                ece_optimizer.zero_grad()
+                scaled = self._scaled_logits(logits)
+                probs = torch.sigmoid(scaled)
+
+                nll = F.binary_cross_entropy_with_logits(scaled, labels)
+                ece_loss = _differentiable_ece(probs, labels)
+                # Weighted combination — ECE dominates but NLL keeps
+                # the solution from degenerating
+                loss = 0.1 * nll + ece_loss
+                loss.backward()
+                ece_optimizer.step()
+                ece_scheduler.step(ece_loss)
+
+                # Clamp temperature to stay positive
+                with torch.no_grad():
+                    self.temperature.data.clamp_(min=0.01)
+
+                # Check hard ECE periodically
+                if step % 50 == 0 or step == ece_steps:
+                    with torch.no_grad():
+                        cur_probs = torch.sigmoid(
+                            self._scaled_logits(logits),
+                        ).cpu().numpy()
+                    cur_ece = _hard_ece(cur_probs, labels_np)
+
+                    if cur_ece < best_ece:
+                        best_ece = cur_ece
+                        best_state = {
+                            "temperature": self.temperature.data.clone(),
+                            "bias": self.bias.data.clone(),
+                        }
+
+                    logger.info(
+                        "  step %d/%d: ECE=%.4f  best=%.4f  T=%.4f  b=%.4f",
+                        step, ece_steps, cur_ece, best_ece,
+                        self.temperature.item(), self.bias.item(),
+                    )
+
+                    if best_ece <= target_ece:
+                        logger.info(
+                            "  ECE target reached (%.4f <= %.4f)",
+                            best_ece, target_ece,
+                        )
+                        break
+
+            # Restore best parameters
+            with torch.no_grad():
+                self.temperature.data.copy_(best_state["temperature"])
+                self.bias.data.copy_(best_state["bias"])
+
+            logger.info(
+                "Phase 2 done: T=%.4f  b=%.4f  ECE=%.4f → %.4f",
+                self.temperature.item(),
+                self.bias.item(),
+                ece_after_nll,
+                best_ece,
+            )
+        else:
+            logger.info(
+                "ECE already at %.4f (below target %.4f) — skipping Phase 2",
+                ece_after_nll, target_ece,
+            )
+
+        return self.temperature.item()
 
     # ── inference ───────────────────────────────────────────────────────
 
     @torch.no_grad()
     def calibrate(self, logits: torch.Tensor) -> torch.Tensor:
-        """Apply temperature scaling and return calibrated probabilities.
+        """Apply Platt scaling and return calibrated probabilities.
 
         Args:
             logits: Raw logits — any shape (scalar, 1-D, or 2-D).
 
         Returns:
-            ``sigmoid(logits / T)`` with the same shape as input.
+            ``sigmoid((logits + bias) / T)`` with the same shape as input.
         """
-        return torch.sigmoid(logits / self.temperature)
+        return torch.sigmoid(self._scaled_logits(logits))
 
     # ── persistence ─────────────────────────────────────────────────────
 
     def save(self, path: str | Path) -> None:
-        """Save the fitted temperature to disk.
+        """Save the fitted parameters to disk.
 
         Args:
             path: File path (pickle).
         """
         with open(path, "wb") as f:
-            pickle.dump({"temperature": self.temperature.item()}, f)
-        logger.info("TemperatureScaler saved to %s (T=%.4f)", path, self.temperature.item())
+            pickle.dump(
+                {
+                    "temperature": self.temperature.item(),
+                    "bias": self.bias.item(),
+                },
+                f,
+            )
+        logger.info(
+            "TemperatureScaler saved to %s (T=%.4f, b=%.4f)",
+            path, self.temperature.item(), self.bias.item(),
+        )
 
     @classmethod
     def load(cls, path: str | Path) -> TemperatureScaler:
@@ -155,7 +355,7 @@ class TemperatureScaler(nn.Module):
             path: File path produced by :meth:`save`.
 
         Returns:
-            A :class:`TemperatureScaler` with the restored temperature.
+            A :class:`TemperatureScaler` with the restored parameters.
         """
         with open(path, "rb") as f:
             state = pickle.load(f)  # noqa: S301
@@ -163,5 +363,11 @@ class TemperatureScaler(nn.Module):
         inst.temperature = nn.Parameter(
             torch.tensor([state["temperature"]]),
         )
-        logger.info("TemperatureScaler loaded from %s (T=%.4f)", path, inst.temperature.item())
+        inst.bias = nn.Parameter(
+            torch.tensor([state.get("bias", 0.0)]),
+        )
+        logger.info(
+            "TemperatureScaler loaded from %s (T=%.4f, b=%.4f)",
+            path, inst.temperature.item(), inst.bias.item(),
+        )
         return inst

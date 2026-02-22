@@ -345,9 +345,14 @@ def load_model(
         num_app_features=num_app_features,
         num_council_features=num_council_features,
     )
-    model.load_state_dict(
-        torch.load(path, map_location="cpu", weights_only=True),
+    checkpoint = torch.load(path, map_location="cpu", weights_only=True)
+    # Support both raw state_dicts and full checkpoint dicts
+    state_dict = (
+        checkpoint["model_state_dict"]
+        if "model_state_dict" in checkpoint
+        else checkpoint
     )
+    model.load_state_dict(state_dict)
     model.eval()
     logger.info("Model loaded from %s", path)
     return model
