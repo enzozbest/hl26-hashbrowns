@@ -11,7 +11,7 @@ Hierarchy:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,6 +30,83 @@ class CouncilContext(BaseModel):
     local_authority_name: str
     region_name: str
     year: str = Field(description="Data vintage year, e.g. '2023'.")
+
+
+# ---------------------------------------------------------------------------
+# OraclePrediction — neural-network output passed into the report
+# ---------------------------------------------------------------------------
+
+
+class CouncilPrediction(BaseModel):
+    """A single council's prediction from the planning oracle."""
+
+    model_config = ConfigDict(extra="allow")
+
+    council_id: int
+    council_name: Optional[str] = None
+    score: float = Field(description="Approval affinity score (0-1).")
+
+
+class OraclePrediction(BaseModel):
+    """Output from the planning-oracle neural network.
+
+    Passed into the report builder so that sections can incorporate
+    ML-based approval predictions alongside traditional data analysis.
+
+    The ``reasonings`` field is intentionally loose (list of free-form
+    dicts) because the neural network does not yet produce structured
+    reasoning output.  When it does, consumers should adapt the
+    ``format_reasonings`` helper rather than changing the field type.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    approval_probability: float = Field(
+        description="Calibrated approval probability (0-1).",
+    )
+    confidence_interval: tuple[float, float] = Field(
+        description="Approximate 95% confidence interval (lower, upper).",
+    )
+    top_councils: list[CouncilPrediction] = Field(
+        default_factory=list,
+        description="Councils ranked by approval affinity, highest first.",
+    )
+    reasonings: Optional[list[dict[str, Any]]] = Field(
+        default=None,
+        description=(
+            "Free-form reasoning entries from the neural network. "
+            "Each dict may contain 'text', 'factor', 'weight', or any "
+            "schema the model produces. None until the model supports it."
+        ),
+    )
+
+
+def format_reasonings(reasonings: list[dict[str, Any]]) -> list[str]:
+    """Convert raw reasoning dicts into human-readable strings.
+
+    This helper is intentionally loose so it can be adapted when the
+    neural network starts producing structured reasoning output.
+    Currently handles two formats:
+
+    * ``{"text": "..."}`` — plain text reasoning
+    * ``{"factor": "...", "weight": 0.3, "direction": "positive"}``
+      — weighted factor
+
+    Unknown dict shapes are serialised as-is.
+    """
+    lines: list[str] = []
+    for entry in reasonings:
+        if "text" in entry:
+            lines.append(str(entry["text"]))
+        elif "factor" in entry:
+            weight = entry.get("weight", "")
+            direction = entry.get("direction", "")
+            prefix = f"[{direction}]" if direction else ""
+            suffix = f" (weight: {weight})" if weight else ""
+            lines.append(f"{prefix} {entry['factor']}{suffix}".strip())
+        else:
+            lines.append(str(entry))
+    return lines
 
 
 # ---------------------------------------------------------------------------
