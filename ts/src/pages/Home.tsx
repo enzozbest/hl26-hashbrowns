@@ -149,7 +149,9 @@ export default function Home() {
 
                         <p className="mt-6 text-[0.95rem] leading-relaxed max-w-[22rem] font-light"
                            style={{fontFamily: 'Inter, sans-serif', color: C.textMuted}}>
-                            Describe your development proposal. Clearance ranks every UK council by approval likelihood,
+                            Describe your development proposal. Siteline
+
+ ranks every UK council by approval likelihood,
                             decision speed, and planning constraints — so you know where to build before you commit to a
                             site.
                         </p>

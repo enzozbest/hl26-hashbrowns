@@ -61,7 +61,7 @@ export default function App() {
                             color: '#c8962a',
                         }}
                     >
-                        Clearance
+                        Siteline
                     </span>
                 </NavLink>
 
