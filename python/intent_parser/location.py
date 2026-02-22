@@ -878,68 +878,37 @@ UK_COUNCILS: dict[str, dict] = {
 # Region → council mapping
 # ---------------------------------------------------------------------------
 
-REGIONS: dict[str, list[str]] = {
-    # London sub-regions
-    "South London": [
-        "Lambeth", "Southwark", "Lewisham", "Greenwich", "Bromley",
-        "Croydon", "Sutton", "Merton", "Kingston upon Thames",
-        "Wandsworth", "Bexley",
-    ],
-    "North London": [
-        "Camden", "Islington", "Haringey", "Enfield", "Barnet",
-        "Hackney", "Waltham Forest",
-    ],
-    "East London": [
-        "Tower Hamlets", "Newham", "Barking and Dagenham", "Redbridge",
-        "Havering", "Hackney", "Waltham Forest",
-    ],
-    "West London": [
-        "Hammersmith and Fulham", "Ealing", "Hounslow", "Hillingdon",
-        "Brent", "Harrow", "Richmond upon Thames",
-    ],
-    "Central London": [
-        "Westminster", "City of London", "Camden", "Islington",
-        "Kensington and Chelsea", "Southwark", "Lambeth",
-    ],
-    "London": sorted({
-        c for c, d in UK_COUNCILS.items() if d["region"] == "London"
-    }),
-    # Metropolitan areas
-    "Greater Manchester": [
-        "Manchester", "Salford", "Stockport", "Tameside", "Oldham",
-        "Rochdale", "Bury", "Bolton", "Wigan", "Trafford",
-    ],
-    "West Midlands": [
-        "Birmingham", "Wolverhampton", "Coventry", "Dudley",
-        "Sandwell", "Solihull", "Walsall",
-    ],
-    "South Yorkshire": [
-        "Sheffield", "Doncaster", "Rotherham", "Barnsley",
-    ],
-    "West Yorkshire": [
-        "Leeds", "Bradford", "Wakefield", "Kirklees", "Calderdale",
-    ],
-    "Merseyside": [
-        "Liverpool", "Sefton", "Knowsley", "St Helens", "Wirral",
-    ],
-}
+# Import the authoritative region → council mapping from data/regions.py
+from data.regions import REGIONS as _DATA_REGIONS
 
-# Auto-populate REGIONS from UK_COUNCILS for any region not already listed.
-# This ensures every council's "region" value can be resolved as a region filter.
-for _name, _data in UK_COUNCILS.items():
-    _rgn = _data["region"]
-    if _rgn not in REGIONS:
-        REGIONS[_rgn] = []
-    # Add council if not already present (avoids duplicates with hand-curated lists)
-    if _name not in REGIONS[_rgn]:
-        REGIONS[_rgn].append(_name)
+REGIONS: dict[str, list[str]] = dict(_DATA_REGIONS)
 
-    # Also index by sub_region if it differs from region and isn't already a key
-    _sub = _data.get("sub_region")
-    if _sub and _sub != _rgn and _sub not in REGIONS:
-        REGIONS[_sub] = []
-    if _sub and _sub != _rgn and _name not in REGIONS[_sub]:
-        REGIONS[_sub].append(_name)
+# London sub-regions (not in data/regions.py but useful for finer-grained queries)
+REGIONS["South London"] = [
+    "Lambeth", "Southwark", "Lewisham", "Greenwich", "Bromley",
+    "Croydon", "Sutton", "Merton", "Kingston upon Thames",
+    "Wandsworth", "Bexley",
+]
+REGIONS["North London"] = [
+    "Camden", "Islington", "Haringey", "Enfield", "Barnet",
+    "Hackney", "Waltham Forest",
+]
+REGIONS["East London"] = [
+    "Tower Hamlets", "Newham", "Barking and Dagenham", "Redbridge",
+    "Havering", "Hackney", "Waltham Forest",
+]
+REGIONS["West London"] = [
+    "Hammersmith and Fulham", "Ealing", "Hounslow", "Hillingdon",
+    "Brent", "Harrow", "Richmond upon Thames",
+]
+REGIONS["Central London"] = [
+    "Westminster", "City of London", "Camden", "Islington",
+    "Kensington and Chelsea", "Southwark", "Lambeth",
+]
+
+# Also support "Yorkshire and the Humber" as an alias for "Yorkshire & Humber"
+if "Yorkshire & Humber" in REGIONS and "Yorkshire and the Humber" not in REGIONS:
+    REGIONS["Yorkshire and the Humber"] = REGIONS["Yorkshire & Humber"]
 
 
 # ---------------------------------------------------------------------------
