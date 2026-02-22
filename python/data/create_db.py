@@ -7,7 +7,6 @@ data source's populate_db function.
 from pathlib import Path
 
 from data.council_boundaries.create_db import populate_db as populate_council_boundaries
-from data.flood_data.create_db import populate_db as populate_flood_zones
 from data.ghost_permit_data.create_db import populate_db as populate_ghost_permits
 from data.green_belt_data.create_db import populate_db as populate_green_belt
 from data.housing_test_data.create_db import populate_db as populate_housing_test
@@ -25,9 +24,6 @@ def build_db():
 
     print("  Populating housing delivery test data...")
     populate_housing_test(DB_PATH)
-
-    print("  Populating flood zone data...")
-    populate_flood_zones(DB_PATH)
 
     print("  Populating income data...")
     populate_income(DB_PATH)
