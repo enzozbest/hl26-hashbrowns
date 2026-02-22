@@ -242,7 +242,7 @@ class PlanningAPIClient:
         council_id: Union[int, str],
         *,
         page_size: int = 1000,
-        max_pages: int = 10,
+        max_pages: int = 5,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
         date_range_type: str = "determined",

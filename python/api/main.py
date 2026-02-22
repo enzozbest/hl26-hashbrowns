@@ -6,6 +6,7 @@ Endpoints:
     POST /api/search   — Full pipeline: parse → orchestrate → return results
     POST /api/report   — Due diligence report: parse → IBex → score → rank (JSON)
     POST /api/report/pdf — Same pipeline, returns a downloadable PDF file
+    POST /api/council-stats — Fetch real IBex stats for council IDs (from NN output)
     GET  /api/councils — Council lookup for frontend autocomplete
     GET  /api/adapters — Registered adapters and their status
     GET  /api/health   — Health check
@@ -16,8 +17,11 @@ Run with:
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import date, timedelta
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -36,8 +40,11 @@ from intent_parser.schema import ParsedIntent
 
 from analysis.agent import DueDiligenceAgent
 from hashbrowns.config import settings as ibex_settings
+from hashbrowns.ibex.client import IbexClient
 
 from .orchestrator import SearchOrchestrator
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Globals wired up at startup
@@ -45,6 +52,7 @@ from .orchestrator import SearchOrchestrator
 
 orchestrator = SearchOrchestrator()
 dd_agent: DueDiligenceAgent | None = None
+ibex_client: IbexClient | None = None
 
 
 @asynccontextmanager
@@ -54,7 +62,7 @@ async def lifespan(app: FastAPI):
     Each adapter gracefully degrades to returning empty results when its
     credentials / data files are not configured.
     """
-    global dd_agent
+    global dd_agent, ibex_client
 
     orchestrator.register(IBexAdapter(
         api_token=os.getenv("IBEX_API_TOKEN"),
@@ -73,10 +81,13 @@ async def lifespan(app: FastAPI):
         data_dir=os.getenv("CONSTRAINTS_DATA_DIR"),
     ))
 
+    ibex_client = IbexClient(ibex_settings)
     dd_agent = DueDiligenceAgent(ibex_settings, parse_fn=_parse)
-    async with dd_agent:
-        yield
+    async with ibex_client:
+        async with dd_agent:
+            yield
     dd_agent = None
+    ibex_client = None
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +121,12 @@ class QueryRequest(BaseModel):
 class AnalyseRequest(BaseModel):
     council_ids: list[int]
     prompt: str
+
+
+class CouncilStatsRequest(BaseModel):
+    council_ids: list[int]
+    date_from: str | None = None
+    date_to: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +300,55 @@ async def adapters_endpoint() -> dict[str, Any]:
 @app.get("/api/health")
 async def health_endpoint() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/api/council-stats")
+async def council_stats_endpoint(body: CouncilStatsRequest) -> dict[str, Any]:
+    """Fetch real IBex statistics for a list of council IDs.
+
+    Designed to be called after the NN /predict endpoint — takes the
+    council_ids from the model's top_councils output and returns real
+    planning statistics (approval rates, decision times, application
+    counts) from the IBex /stats API.
+    """
+    if ibex_client is None:
+        raise HTTPException(status_code=503, detail="IBex client not ready")
+
+    today = date.today()
+    dt_to = body.date_to or today.isoformat()
+    dt_from = body.date_from or (today - timedelta(days=365)).isoformat()
+
+    async def _fetch_one(council_id: int) -> tuple[int, dict[str, Any] | str]:
+        try:
+            stats = await ibex_client.stats(council_id, dt_from, dt_to)
+            return council_id, {
+                "council_id": council_id,
+                "approval_rate": stats.approval_rate,
+                "refusal_rate": stats.refusal_rate,
+                "activity_level": stats.council_development_activity_level.value,
+                "average_decision_time": stats.average_decision_time.model_dump(
+                    by_alias=True, exclude_none=True,
+                ),
+                "number_of_applications": stats.number_of_applications.model_dump(
+                    by_alias=True, exclude_none=True,
+                ),
+                "number_of_new_homes_approved": stats.number_of_new_homes_approved,
+            }
+        except Exception as exc:
+            logger.warning("Stats fetch failed for council %d: %s", council_id, exc)
+            return council_id, f"Council {council_id}: {exc}"
+
+    results = await asyncio.gather(*[_fetch_one(cid) for cid in body.council_ids])
+
+    council_stats: dict[str, dict[str, Any]] = {}
+    errors: list[str] = []
+    for council_id, outcome in results:
+        if isinstance(outcome, str):
+            errors.append(outcome)
+        else:
+            council_stats[str(council_id)] = outcome
+
+    return {"council_stats": council_stats, "errors": errors}
 
 
 @app.post("/api/analyse")

@@ -2,7 +2,7 @@ import { useLocation, Navigate } from 'react-router-dom'
 import { MapContainer, GeoJSON, useMap } from 'react-leaflet'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import L from 'leaflet'
-import {fetchCouncils, type CouncilInfo, type CouncilResult} from '../api/client'
+import {fetchCouncils, fetchCouncilStats, type CouncilInfo, type CouncilResult, type CouncilStats} from '../api/client'
 import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import type { Layer, PathOptions } from 'leaflet'
 
@@ -86,15 +86,46 @@ interface MapState {
 }
 interface SelectedBorough { name: string; councilId: number; pct: number | undefined }
 
+// ── Stat row helper ──────────────────────────────────────────────────────────
+function StatRow({ label, value, unit }: { label: string; value: string | number | null | undefined; unit?: string }) {
+  if (value === null || value === undefined) return null
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', borderBottom: `1px solid ${C.accentFaint}` }}>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.72rem', color: C.textMuted }}>{label}</span>
+      <span style={{ fontFamily: '"Barlow Condensed", sans-serif', fontWeight: 600, fontSize: '0.88rem', color: C.text }}>
+        {typeof value === 'number' ? value.toLocaleString() : value}{unit ?? ''}
+      </span>
+    </div>
+  )
+}
+
 // ── BoroughDetail panel ──────────────────────────────────────────────────────
-function BoroughDetail({ name, pct, councilId, analysisId, onClose }: {
-  name:       string
-  pct:        number | undefined
-  councilId:  number
-  analysisId: string
-  onClose:    () => void
+function BoroughDetail({ name, pct, councilId, analysisId, stats, indicators, onClose }: {
+  name:        string
+  pct:         number | undefined
+  councilId:   number
+  analysisId:  string
+  stats:       CouncilStats | null
+  indicators?: { name: string; value: number; contribution: number; direction: string }[]
+  onClose:     () => void
 }) {
   const meta = pct !== undefined ? riskMeta(pct) : null
+
+  // Derive average decision time across categories
+  const avgDecisionDays = stats?.average_decision_time
+    ? (() => {
+        const vals = Object.values(stats.average_decision_time).filter((v): v is number => v !== null && v !== undefined)
+        return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null
+      })()
+    : null
+
+  // Total applications across categories
+  const totalApps = stats?.number_of_applications
+    ? (() => {
+        const vals = Object.values(stats.number_of_applications).filter((v): v is number => v !== null && v !== undefined)
+        return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) : null
+      })()
+    : null
 
   return (
     <div style={{
@@ -106,8 +137,10 @@ function BoroughDetail({ name, pct, councilId, analysisId, onClose }: {
       border:         `1px solid ${C.border}`,
       backdropFilter: 'blur(12px)',
       padding:        '20px 22px',
-      minWidth:       '240px',
-      maxWidth:       '280px',
+      minWidth:       '260px',
+      maxWidth:       '310px',
+      overflowY:      'auto',
+      maxHeight:      'calc(100vh - 100px)',
     }}>
       {/* Corner brackets */}
       {([
@@ -139,7 +172,7 @@ function BoroughDetail({ name, pct, councilId, analysisId, onClose }: {
       {pct !== undefined && meta ? (
         <>
           <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: C.textFaint, marginBottom: 8 }}>
-            Approval Likelihood
+            NN Approval Likelihood
           </p>
           <div style={{ fontFamily: '"Barlow Condensed", sans-serif', fontWeight: 700, fontSize: '2.6rem', color: C.accent, lineHeight: 1, marginBottom: 10 }}>
             {pct}%
@@ -160,8 +193,52 @@ function BoroughDetail({ name, pct, councilId, analysisId, onClose }: {
         </>
       ) : (
         <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.85rem', color: C.textMuted, marginBottom: 16 }}>
-          No data available for this council.
+          No NN data available for this council.
         </p>
+      )}
+
+      {/* ── Real IBex Statistics ───────────────────────────────── */}
+      {stats ? (
+        <div style={{ marginBottom: 16 }}>
+          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: C.textFaint, marginBottom: 10 }}>
+            IBex Planning Statistics
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <StatRow label="Approval rate" value={stats.approval_rate != null ? `${(stats.approval_rate * 100).toFixed(1)}` : null} unit="%" />
+            <StatRow label="Refusal rate" value={stats.refusal_rate != null ? `${(stats.refusal_rate * 100).toFixed(1)}` : null} unit="%" />
+            <StatRow label="Activity level" value={stats.activity_level} />
+            <StatRow label="Avg. decision time" value={avgDecisionDays} unit=" days" />
+            <StatRow label="Total applications" value={totalApps} />
+            <StatRow label="New homes approved" value={stats.number_of_new_homes_approved} />
+          </div>
+        </div>
+      ) : (
+        <p style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.75rem', color: C.textFaint, fontStyle: 'italic', marginBottom: 16 }}>
+          Loading real statistics…
+        </p>
+      )}
+
+      {/* ── NN Indicators ─────────────────────────────────────── */}
+      {indicators && indicators.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: C.textFaint, marginBottom: 8 }}>
+            Key Indicators
+          </p>
+          {indicators.map((ind) => (
+            <div key={ind.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', borderBottom: `1px solid ${C.accentFaint}` }}>
+              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.72rem', color: C.textMuted, flex: 1 }}>
+                {ind.name}
+              </span>
+              <span style={{
+                fontFamily: '"Barlow Condensed", sans-serif', fontWeight: 600, fontSize: '0.78rem',
+                color: ind.direction === 'positive' ? '#6b8f5e' : ind.direction === 'negative' ? '#b85c38' : C.textMuted,
+                marginLeft: 8,
+              }}>
+                {ind.direction === 'positive' ? '▲' : ind.direction === 'negative' ? '▼' : '–'} {(ind.contribution * 100).toFixed(0)}%
+              </span>
+            </div>
+          ))}
+        </div>
       )}
 
       <a
@@ -194,7 +271,7 @@ function BoroughDetail({ name, pct, councilId, analysisId, onClose }: {
         textTransform: 'uppercase', color: C.textFaint, background: 'none',
         border: 'none', cursor: 'pointer', padding: 0,
       }}>
-        ← The Back to overview
+        ← Back to overview
       </button>
     </div>
   )
@@ -349,6 +426,7 @@ export default function MapPage() {
   const [selected, setSelected]                 = useState<SelectedBorough | null>(null)
   const [selectedLayer, setSelectedLayer]       = useState<L.Layer | null>(null)
   const [zoomToRegionTrigger, setZoomToRegion]  = useState(0)
+  const [councilStatsMap, setCouncilStatsMap]   = useState<Record<string, CouncilStats>>({})
   const selectedLayerRef = useRef<L.Path | null>(null)
   const geoJsonRef       = useRef<L.GeoJSON | null>(null)
   const layerMapRef      = useRef(new Map<string, L.Path>())
@@ -358,6 +436,15 @@ export default function MapPage() {
       .then(data => { setCouncils(data); setLoading(false) })
       .catch(() => setLoading(false))
   }, [])
+
+  // Fetch real IBex stats for all councils in the analysis results
+  useEffect(() => {
+    if (!state || state.analyseResults.length === 0) return
+    const ids = state.analyseResults.map(r => r.council_id)
+    fetchCouncilStats(ids)
+      .then(res => setCouncilStatsMap(res.council_stats))
+      .catch(err => console.warn('Failed to fetch council stats:', err))
+  }, [state])
 
   // Build a GeoJSON FeatureCollection from the fetched council data
   const geoData: FeatureCollection | null = councils.length > 0 ? {
@@ -585,7 +672,15 @@ export default function MapPage() {
           </button>
 
           {selected && (
-            <BoroughDetail name={selected.name} pct={selected.pct} councilId={selected.councilId} analysisId={state.analysisId} onClose={handleReset} />
+            <BoroughDetail
+              name={selected.name}
+              pct={selected.pct}
+              councilId={selected.councilId}
+              analysisId={state.analysisId}
+              stats={councilStatsMap[String(selected.councilId)] ?? null}
+              indicators={resultMap.get(selected.councilId)?.indicators}
+              onClose={handleReset}
+            />
           )}
         </>
       )}
