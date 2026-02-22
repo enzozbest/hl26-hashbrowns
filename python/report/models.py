@@ -26,8 +26,8 @@ class CouncilContext(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    local_authority_code: str
-    local_authority_name: str
+    ons_code: str
+    council_name: str
     region_name: str
     year: str = Field(description="Data vintage year, e.g. '2023'.")
 

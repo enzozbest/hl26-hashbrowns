@@ -18,7 +18,7 @@ print(f"Generating report for '{council}' ({year})...")
 report = build_report(council, year)
 pdf = render_pdf(report)
 
-slug = report.council.local_authority_name.lower().replace(" ", "_")
+slug = report.council.council_name.lower().replace(" ", "_")
 out = Path(__file__).parent / f"{slug}_{year}.pdf"
 out.write_bytes(pdf)
 print(f"Written: {out}")

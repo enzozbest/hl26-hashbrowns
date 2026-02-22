@@ -15,7 +15,7 @@ def init_db(db_path):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             year TEXT,
             ons_code TEXT,
-            area_name TEXT,
+            council_name TEXT,
             council_id INTEGER,
             homes_required_y1 REAL,
             homes_required_y2 REAL,
@@ -40,7 +40,7 @@ def insert_records(records, db_path):
 
     cursor.executemany("""
         INSERT INTO housing_delivery_test (
-            year, ons_code, area_name, council_id,
+            year, ons_code, council_name, council_id,
             homes_required_y1, homes_required_y2, homes_required_y3,
             total_homes_required,
             homes_delivered_y1, homes_delivered_y2, homes_delivered_y3,

@@ -29,7 +29,7 @@ class IncomeProfileSection(BaseSection):
         year_df = df[df["year"] == council.year]
 
         council_row = year_df[
-            year_df["local_authority_code"] == council.local_authority_code
+            year_df["ons_code"] == council.ons_code
         ]
 
         if council_row.empty:
@@ -119,7 +119,7 @@ class IncomeProfileSection(BaseSection):
         )
 
         summary = _build_summary(
-            council_name=council.local_authority_name,
+            council_name=council.council_name,
             council_income=council_income,
             national_mean=national_mean,
             vs_national_pct=vs_national_pct,

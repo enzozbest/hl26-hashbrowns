@@ -70,21 +70,21 @@ def _resolve_council(council: str, year: str) -> CouncilContext:
         raise ValueError(f"No income data found for year '{year}'.")
 
     # Try exact ONS code match first, then case-insensitive name match.
-    match = df[df["local_authority_code"].str.upper() == council.upper()]
+    match = df[df["ons_code"].str.upper() == council.upper()]
     if match.empty:
-        match = df[df["local_authority_name"].str.lower() == council.lower()]
+        match = df[df["council_name"].str.lower() == council.lower()]
     if match.empty:
         # Partial name match as a fallback.
-        match = df[df["local_authority_name"].str.lower().str.contains(council.lower())]
+        match = df[df["council_name"].str.lower().str.contains(council.lower())]
 
     if match.empty:
-        available = sorted(df["local_authority_name"].tolist())
+        available = sorted(df["council_name"].tolist())
         raise ValueError(
             f"Council '{council}' not found for year {year}. "
             f"Available: {available}"
         )
     if len(match) > 1:
-        names = match["local_authority_name"].tolist()
+        names = match["council_name"].tolist()
         raise ValueError(
             f"Ambiguous council name '{council}' — matched: {names}. "
             f"Please be more specific or use the ONS code."
@@ -92,8 +92,8 @@ def _resolve_council(council: str, year: str) -> CouncilContext:
 
     row = match.iloc[0]
     return CouncilContext(
-        local_authority_code=row["local_authority_code"],
-        local_authority_name=row["local_authority_name"],
+        ons_code=row["ons_code"],
+        council_name=row["council_name"],
         region_name=row["region_name"],
         year=year,
     )

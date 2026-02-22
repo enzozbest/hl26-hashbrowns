@@ -14,8 +14,8 @@ def init_db(db_path):
         CREATE TABLE IF NOT EXISTS income_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             year TEXT,
-            local_authority_code TEXT,
-            local_authority_name TEXT,
+            ons_code TEXT,
+            council_name TEXT,
             council_id INTEGER,
             region_name TEXT,
             mean_disposable_income REAL
@@ -32,7 +32,7 @@ def insert_records(records, db_path):
 
     cursor.executemany("""
         INSERT INTO income_data (
-            year, local_authority_code, local_authority_name, council_id,
+            year, ons_code, council_name, council_id,
             region_name, mean_disposable_income
         ) VALUES (?, ?, ?, ?, ?, ?)
 
