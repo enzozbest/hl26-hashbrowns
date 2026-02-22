@@ -26,11 +26,8 @@ class IncomeProfileSection(BaseSection):
 
     def run(self, council: CouncilContext, data: dict[str, pd.DataFrame]) -> SectionResult:
         df = data["income_data"]
-        year_df = df[df["year"] == council.year]
 
-        council_row = year_df[
-            year_df["ons_code"] == council.ons_code
-        ]
+        council_row = df[df["ons_code"] == council.ons_code]
 
         if council_row.empty:
             return SectionResult(
@@ -44,19 +41,19 @@ class IncomeProfileSection(BaseSection):
         council_income = council_row.iloc[0]["mean_disposable_income"]
         region_name = council_row.iloc[0]["region_name"]
 
-        national_mean = year_df["mean_disposable_income"].mean()
-        regional_df = year_df[year_df["region_name"] == region_name]
+        national_mean = df["mean_disposable_income"].mean()
+        regional_df = df[df["region_name"] == region_name]
         regional_mean = regional_df["mean_disposable_income"].mean()
 
         is_london = region_name == "London"
-        london_df = year_df[year_df["region_name"] == "London"]
+        london_df = df[df["region_name"] == "London"]
         london_mean = london_df["mean_disposable_income"].mean()
 
         national_rank = int(
-            year_df["mean_disposable_income"]
+            df["mean_disposable_income"]
             .rank(ascending=False, method="min")[council_row.index[0]]
         )
-        national_total = len(year_df)
+        national_total = len(df)
 
         regional_rank = int(
             regional_df["mean_disposable_income"]
@@ -72,7 +69,7 @@ class IncomeProfileSection(BaseSection):
                 label="Mean disposable income",
                 value=f"{council_income:,.0f}",
                 unit="£",
-                context=f"Financial year ending March {council.year}",
+                context="Latest available data",
                 direction="neutral",
             ),
             Metric(

@@ -254,7 +254,6 @@ def _cover_page(report: CouncilReport, st: dict) -> list:
     meta_lines = [
         f"Region: {council.region_name}",
         f"ONS Code: {council.ons_code}",
-        f"Data vintage: {council.year}",
         f"Generated: {generated}",
     ]
     meta = Paragraph(" &nbsp;&nbsp;|&nbsp;&nbsp; ".join(meta_lines), st["cover_meta"])

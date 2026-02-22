@@ -3,22 +3,23 @@
 Usage:
     uv run python -m report.generate
     uv run python -m report.generate "Richmond upon Thames"
-    uv run python -m report.generate Hackney 2023
+    uv run python -m report.generate Hackney
 """
 
 import sys
+from datetime import date
 from pathlib import Path
 
 from report import build_report, render_pdf
 
 council = sys.argv[1] if len(sys.argv) > 1 else "Hackney"
-year = sys.argv[2] if len(sys.argv) > 2 else "2023"
 
-print(f"Generating report for '{council}' ({year})...")
-report = build_report(council, year)
+print(f"Generating report for '{council}'...")
+report = build_report(council)
 pdf = render_pdf(report)
 
 slug = report.council.council_name.lower().replace(" ", "_")
-out = Path(__file__).parent / f"{slug}_{year}.pdf"
+today = date.today().strftime("%Y%m%d")
+out = Path(__file__).parent / f"{slug}_{today}.pdf"
 out.write_bytes(pdf)
 print(f"Written: {out}")

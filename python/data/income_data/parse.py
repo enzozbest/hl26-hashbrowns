@@ -12,7 +12,6 @@ def parse_data():
     unmatched: set[str] = set()
 
     for path in sorted(DATA_DIR.glob("*.xlsx")):
-        year = path.stem  # e.g. "2023"
         df = pd.read_excel(path, sheet_name="Net annual income", header=3)
 
         aggregated = (
@@ -35,9 +34,8 @@ def parse_data():
                 continue
 
             records.append((
-                str(year),
-                row[0],                # local_authority_code
-                council.name,          # normalised local_authority_name
+                row[0],                # ons_code
+                council.name,          # normalised council_name
                 council.id,            # council_id
                 row[2],                # region_name
                 row[3],                # mean_disposable_income

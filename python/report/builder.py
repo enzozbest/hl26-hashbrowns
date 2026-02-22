@@ -23,7 +23,6 @@ from report.sections.approval_prediction import ApprovalPredictionSection
 
 def build_report(
     council: str,
-    year: str = "2023",
     *,
     oracle_prediction: Optional[OraclePrediction] = None,
 ) -> CouncilReport:
@@ -32,7 +31,6 @@ def build_report(
     Args:
         council:  Local authority name (case-insensitive partial match) or
                   ONS code (e.g. ``"E09000012"``).
-        year:     Data vintage year.  Must match a year present in the DB.
         oracle_prediction:  Optional output from the planning-oracle neural
             network.  When provided, the *Approval Prediction* section is
             populated with ML-based approval probabilities and council
@@ -42,17 +40,22 @@ def build_report(
         A fully populated :class:`~report.models.CouncilReport`.
 
     Raises:
-        ValueError: If the council cannot be resolved or the year is absent.
+        ValueError: If the council cannot be resolved.
     """
-    ctx = _resolve_council(council, year)
-    data = _load_data(year)
+    ctx = _resolve_council(council)
+    data = _load_data()
 
     sections = []
     for section in SECTIONS:
         if isinstance(section, ApprovalPredictionSection):
-            sections.append(section.run(ctx, data, oracle=oracle_prediction))
+            if oracle_prediction is not None:
+                result = section.run(ctx, data, oracle=oracle_prediction)
+                if result is not None:
+                    sections.append(result)
         else:
-            sections.append(section.run(ctx, data))
+            result = section.run(ctx, data)
+            if result is not None:
+                sections.append(result)
 
     return CouncilReport(council=ctx, sections=sections)
 
@@ -62,12 +65,8 @@ def build_report(
 # ---------------------------------------------------------------------------
 
 
-def _resolve_council(council: str, year: str) -> CouncilContext:
+def _resolve_council(council: str) -> CouncilContext:
     df = query("income_data")
-
-    df = df[df["year"] == year]
-    if df.empty:
-        raise ValueError(f"No income data found for year '{year}'.")
 
     # Try exact ONS code match first, then case-insensitive name match.
     match = df[df["ons_code"].str.upper() == council.upper()]
@@ -80,8 +79,7 @@ def _resolve_council(council: str, year: str) -> CouncilContext:
     if match.empty:
         available = sorted(df["council_name"].tolist())
         raise ValueError(
-            f"Council '{council}' not found for year {year}. "
-            f"Available: {available}"
+            f"Council '{council}' not found. Available: {available}"
         )
     if len(match) > 1:
         names = match["council_name"].tolist()
@@ -95,11 +93,10 @@ def _resolve_council(council: str, year: str) -> CouncilContext:
         ons_code=row["ons_code"],
         council_name=row["council_name"],
         region_name=row["region_name"],
-        year=year,
     )
 
 
-def _load_data(year: str) -> dict[str, pd.DataFrame]:
+def _load_data() -> dict[str, pd.DataFrame]:
     """Load all tables required by any registered section, keyed by table name."""
     required = {table for section in SECTIONS for table in section.required_tables}
     return {table: query(table) for table in required}

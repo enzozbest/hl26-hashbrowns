@@ -6,6 +6,7 @@ data source's populate_db function.
 """
 from pathlib import Path
 
+from data.council_boundaries.create_db import populate_db as populate_council_boundaries
 from data.flood_data.create_db import populate_db as populate_flood_zones
 from data.ghost_permit_data.create_db import populate_db as populate_ghost_permits
 from data.green_belt_data.create_db import populate_db as populate_green_belt
@@ -36,6 +37,9 @@ def build_db():
 
     print("  Initialising Ibex API cache tables...")
     populate_ibex(DB_PATH)
+
+    print("  Populating council boundary polygons...")
+    populate_council_boundaries(DB_PATH)
 
     print("Done.")
 

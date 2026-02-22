@@ -13,7 +13,6 @@ def init_db(db_path):
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS housing_delivery_test (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            year TEXT,
             ons_code TEXT,
             council_name TEXT,
             council_id INTEGER,
@@ -40,13 +39,13 @@ def insert_records(records, db_path):
 
     cursor.executemany("""
         INSERT INTO housing_delivery_test (
-            year, ons_code, council_name, council_id,
+            ons_code, council_name, council_id,
             homes_required_y1, homes_required_y2, homes_required_y3,
             total_homes_required,
             homes_delivered_y1, homes_delivered_y2, homes_delivered_y3,
             total_homes_delivered,
             hdt_measurement, hdt_consequence
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
     """, records)
 

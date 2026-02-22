@@ -29,7 +29,6 @@ class CouncilContext(BaseModel):
     ons_code: str
     council_name: str
     region_name: str
-    year: str = Field(description="Data vintage year, e.g. '2023'.")
 
 
 # ---------------------------------------------------------------------------
