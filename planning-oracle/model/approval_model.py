@@ -155,6 +155,58 @@ class ApprovalModel(nn.Module):
             if was_training:
                 self.train()
 
+    def compute_input_attributions(
+        self,
+        text_embedding: torch.Tensor,
+        app_features: torch.Tensor,
+        council_features: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        """Compute input-gradient attributions for each branch.
+
+        Uses the gradient × input method: for each input feature, the
+        attribution is ``grad(logit, feature_i) * feature_i``.  This
+        decomposes the model's output into per-feature contributions
+        derived directly from the learned weights — not a post-hoc
+        approximation.
+
+        The model is temporarily set to eval mode (dropout/batchnorm
+        deterministic) and gradients are enabled only for the input
+        tensors.
+
+        Args:
+            text_embedding: ``(1, text_embed_dim)``
+            app_features: ``(1, num_app_features)``
+            council_features: ``(1, num_council_features)``
+
+        Returns:
+            Dict with keys ``app`` and ``council``, each mapping to a
+            1-d tensor of per-feature attribution scores (signed).
+            Text attributions are omitted as individual embedding
+            dimensions are not interpretable features.
+        """
+        was_training = self.training
+        self.eval()
+        try:
+            # Clone and enable gradients on the structured inputs.
+            app = app_features.detach().clone().requires_grad_(True)
+            council = council_features.detach().clone().requires_grad_(True)
+            # Text embedding: no grad needed (dims aren't interpretable).
+            text = text_embedding.detach()
+
+            logit = self.forward(text, app, council)
+            logit.backward()
+
+            app_attr = (app.grad * app).squeeze(0).detach()
+            council_attr = (council.grad * council).squeeze(0).detach()
+
+            return {
+                "app": app_attr,
+                "council": council_attr,
+            }
+        finally:
+            if was_training:
+                self.train()
+
     @torch.no_grad()
     def get_branch_outputs(
         self,

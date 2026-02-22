@@ -37,6 +37,19 @@ class CouncilContext(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class IndicatorEntry(BaseModel):
+    """A single feature indicator that influenced a council's score."""
+
+    model_config = ConfigDict(extra="allow")
+
+    name: str = Field(description="Feature name, e.g. 'approval_rate'.")
+    value: float = Field(description="Raw feature value used by the model.")
+    contribution: float = Field(
+        description="Signed magnitude of this feature's contribution.",
+    )
+    direction: str = Field(description="'positive' or 'negative' contributor.")
+
+
 class CouncilPrediction(BaseModel):
     """A single council's prediction from the planning oracle."""
 
@@ -45,6 +58,10 @@ class CouncilPrediction(BaseModel):
     council_id: int
     council_name: Optional[str] = None
     score: float = Field(description="Approval affinity score (0-1).")
+    indicators: list[IndicatorEntry] = Field(
+        default_factory=list,
+        description="Ranked features that drove this borough's score.",
+    )
 
 
 class OraclePrediction(BaseModel):

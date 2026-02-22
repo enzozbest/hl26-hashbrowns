@@ -17,6 +17,8 @@ import pandas as pd
 
 from report.models import (
     CouncilContext,
+    CouncilPrediction,
+    IndicatorEntry,
     Insight,
     Metric,
     OraclePrediction,
@@ -191,19 +193,24 @@ class ApprovalPredictionSection(BaseSection):
                         sentiment="neutral",
                     ))
 
-        # Reasonings from the neural network (when available)
-        if oracle.reasonings:
+        # Key indicators from the top-ranked council
+        if oracle.top_councils and oracle.top_councils[0].indicators:
+            best = oracle.top_councils[0]
+            name = best.council_name or f"Council {best.council_id}"
+            for ind in best.indicators[:5]:
+                sign = "+" if ind.direction == "positive" else "-"
+                sentiment = "positive" if ind.direction == "positive" else "negative"
+                insights.append(Insight(
+                    text=(
+                        f"[{sign}] {ind.name}: {ind.value:.3g} "
+                        f"(contribution: {ind.contribution:+.4f})"
+                    ),
+                    sentiment=sentiment,
+                ))
+        elif oracle.reasonings:
             reasoning_texts = format_reasonings(oracle.reasonings)
             for text in reasoning_texts:
                 insights.append(Insight(text=text, sentiment="neutral"))
-        else:
-            insights.append(Insight(
-                text=(
-                    "Detailed model reasoning is not yet available. "
-                    "Future model versions will provide factor-level explanations."
-                ),
-                sentiment="neutral",
-            ))
 
         return insights
 

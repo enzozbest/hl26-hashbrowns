@@ -31,12 +31,30 @@ logger = logging.getLogger(__name__)
 # ── Response models ──────────────────────────────────────────────────────────
 
 
+class FeatureIndicator(BaseModel):
+    """A single input feature that influenced a borough's score."""
+
+    name: str = Field(..., description="Feature name (e.g. 'approval_rate')")
+    value: float = Field(..., description="Raw feature value used by the model")
+    contribution: float = Field(
+        ...,
+        description="Signed magnitude of this feature's contribution to the score",
+    )
+    direction: str = Field(
+        ..., description="'positive' or 'negative' contributor",
+    )
+
+
 class CouncilResult(BaseModel):
     """A single council in the ranked list."""
 
     council_id: int
     council_name: Optional[str] = None
     score: float = Field(..., description="Approval affinity score (0-1)")
+    indicators: list[FeatureIndicator] = Field(
+        default_factory=list,
+        description="Ranked list of features that drove this borough's score",
+    )
 
 
 class PredictionResult(BaseModel):
@@ -131,38 +149,65 @@ class InferencePipeline:
         ranked = self._ranker.rank_councils(
             intent, self._council_stats, top_k=15,
         )
-        top_councils = []
-        for cid, score in ranked:
-            stats = self._council_stats.get(cid)
-            name = stats.council_name if stats else None
-            top_councils.append(
-                CouncilResult(council_id=cid, council_name=name, score=score),
-            )
 
-        # ── 3. Build feature tensors ─────────────────────────────────
+        # ── 3. Build feature tensors and attributions per council ────
         app_features = self._build_app_features(intent)
-        council_features = self._build_council_features(
-            ranked[0][0] if ranked else None,
-        )
         text_embedding = self._build_text_embedding(intent.raw_text)
 
-        # ── 4. Model prediction ──────────────────────────────────────
-        with torch.no_grad():
-            self._model.eval()
-            logit = self._model(
-                text_embedding.to(self._device),
-                app_features.to(self._device),
-                council_features.to(self._device),
+        top_councils = []
+        first_logit = None
+
+        for cid, score, ranker_indicators in ranked:
+            stats = self._council_stats.get(cid)
+            name = stats.council_name if stats else None
+
+            # Build council-specific features for the neural network.
+            council_features = self._build_council_features(cid)
+
+            # Compute gradient-based attributions from the neural net.
+            nn_indicators = self._compute_nn_indicators(
+                text_embedding, app_features, council_features,
             )
 
-        # ── 5. Calibrate ────────────────────────────────────────────
-        prob = self._calibrator.calibrate(logit.cpu()).squeeze().item()
+            # Merge ranker indicators (stage-1 scoring components) with
+            # neural-net indicators (stage-2 learned feature importance).
+            # Ranker indicators come first as they drive the ranking;
+            # NN indicators follow as they reflect approval prediction.
+            all_indicators = [
+                FeatureIndicator(**ind) for ind in ranker_indicators
+            ] + nn_indicators
+
+            # Capture the logit from the top-ranked council for the
+            # overall approval probability.
+            if first_logit is None:
+                with torch.no_grad():
+                    self._model.eval()
+                    first_logit = self._model(
+                        text_embedding.to(self._device),
+                        app_features.to(self._device),
+                        council_features.to(self._device),
+                    )
+
+            top_councils.append(
+                CouncilResult(
+                    council_id=cid,
+                    council_name=name,
+                    score=score,
+                    indicators=all_indicators,
+                ),
+            )
+
+        # ── 4. Calibrate (using top council's prediction) ────────────
+        if first_logit is not None:
+            prob = self._calibrator.calibrate(first_logit.cpu()).squeeze().item()
+        else:
+            prob = 0.5
         prob = max(0.0, min(1.0, prob))
 
         # Approximate 95% CI using the logistic normal approximation.
         ci = self._confidence_interval(prob, n_approx=100)
 
-        # ── 6. Assemble result ───────────────────────────────────────
+        # ── 5. Assemble result ───────────────────────────────────────
         return PredictionResult(
             parsed_proposal=intent,
             approval_probability=round(prob, 4),
@@ -170,6 +215,104 @@ class InferencePipeline:
             top_councils=top_councils,
             feature_attributions=[],
         )
+
+    # ── Feature name mappings (match order in _build_*_features) ────
+
+    # Application branch feature names (order must match _build_app_features).
+    _APP_FEATURE_NAMES: list[str] = [
+        "num_new_houses",
+        "gross_internal_area",
+        "floor_area_gained",
+        "proposed_gross_floor_area",
+        "num_comments_received",
+        "ratio_one_bed",
+        "ratio_two_bed",
+        "ratio_three_bed",
+        "ratio_four_plus_bed",
+        "affordable_housing_ratio",
+        "application_month_sin",
+        "application_month_cos",
+        "application_year",
+    ]
+
+    # Council branch feature names (order must match _build_council_features).
+    _COUNCIL_FEATURE_NAMES: list[str] = [
+        "overall_approval_rate",
+        "activity_level",
+        "total_applications",
+        "log_total_applications",
+        "residential_proportion",
+        "new_homes_approved",
+        "approval_rate_by_project_type",
+        "avg_decision_time_by_project_type",
+    ]
+
+    def _compute_nn_indicators(
+        self,
+        text_embedding: torch.Tensor,
+        app_features: torch.Tensor,
+        council_features: torch.Tensor,
+        top_k: int = 6,
+    ) -> list[FeatureIndicator]:
+        """Compute gradient×input attributions from the neural network.
+
+        Returns the *top_k* most influential structured features (from
+        the application and council branches), ranked by absolute
+        contribution.
+
+        Args:
+            text_embedding: ``(1, text_embed_dim)``
+            app_features: ``(1, num_app_features)``
+            council_features: ``(1, num_council_features)``
+            top_k: Number of top indicators to return.
+
+        Returns:
+            List of :class:`FeatureIndicator` sorted by
+            ``|contribution|`` descending.
+        """
+        attrs = self._model.compute_input_attributions(
+            text_embedding.to(self._device),
+            app_features.to(self._device),
+            council_features.to(self._device),
+        )
+
+        app_attr = attrs["app"].cpu().tolist()
+        council_attr = attrs["council"].cpu().tolist()
+        app_vals = app_features.squeeze(0).tolist()
+        council_vals = council_features.squeeze(0).tolist()
+
+        # Build named feature list from application branch.
+        indicators: list[FeatureIndicator] = []
+        for i, attr_val in enumerate(app_attr):
+            name = (
+                self._APP_FEATURE_NAMES[i]
+                if i < len(self._APP_FEATURE_NAMES)
+                else f"app_feature_{i}"
+            )
+            indicators.append(FeatureIndicator(
+                name=name,
+                value=round(app_vals[i], 6),
+                contribution=round(attr_val, 6),
+                direction="positive" if attr_val >= 0 else "negative",
+            ))
+
+        # Build named feature list from council branch.
+        for i, attr_val in enumerate(council_attr):
+            name = (
+                self._COUNCIL_FEATURE_NAMES[i]
+                if i < len(self._COUNCIL_FEATURE_NAMES)
+                else f"council_feature_{i}"
+            )
+            indicators.append(FeatureIndicator(
+                name=name,
+                value=round(council_vals[i], 6),
+                contribution=round(attr_val, 6),
+                direction="positive" if attr_val >= 0 else "negative",
+            ))
+
+        # Sort by absolute contribution and keep top_k.
+        indicators.sort(key=lambda x: abs(x.contribution), reverse=True)
+        return indicators[:top_k]
 
     # ── feature building helpers ─────────────────────────────────────
 

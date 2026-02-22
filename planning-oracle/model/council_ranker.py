@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import pickle
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from config.settings import Settings, get_settings
 from data.schema import CouncilStats
@@ -80,7 +80,7 @@ class CouncilRanker:
         intent: ProposalIntent,
         council_stats: dict[int, CouncilStats],
         top_k: int = 15,
-    ) -> list[tuple[int, float]]:
+    ) -> list[tuple[int, float, list[dict[str, Any]]]]:
         """Score and rank councils for a parsed proposal.
 
         Args:
@@ -90,8 +90,11 @@ class CouncilRanker:
             top_k: Number of top councils to return.
 
         Returns:
-            List of ``(council_id, score)`` tuples sorted descending by
-            score.  Scores are in ``[0, 1]``.
+            List of ``(council_id, score, indicators)`` tuples sorted
+            descending by score.  Scores are in ``[0, 1]``.
+            Each ``indicators`` entry is a list of dicts with keys
+            ``name``, ``value``, ``contribution``, ``direction``, ranked
+            by absolute contribution.
         """
         if not council_stats:
             return []
@@ -129,20 +132,35 @@ class CouncilRanker:
         max_speed = max(all_speeds) if all_speeds else 1.0
         max_volume = max(all_volumes) if all_volumes else 1.0
 
-        scored: list[tuple[int, float]] = []
+        scored: list[tuple[int, float, list[dict[str, Any]]]] = []
         for cid, approval, speed, activity, volume in raw_scores:
             # Faster is better → invert so lower days = higher score
             norm_speed = 1.0 - (speed / max_speed) if max_speed > 0 else 0.5
             norm_volume = volume / max_volume if max_volume > 0 else 0.0
 
-            score = (
-                self._w_approval * approval
-                + self._w_speed * norm_speed
-                + self._w_activity * activity
-                + self._w_volume * norm_volume
-            )
+            # Compute weighted contributions for each component.
+            components = [
+                ("approval_rate", approval, self._w_approval * approval),
+                ("decision_speed", norm_speed, self._w_speed * norm_speed),
+                ("activity_level", activity, self._w_activity * activity),
+                ("homes_volume", norm_volume, self._w_volume * norm_volume),
+            ]
 
-            scored.append((cid, round(score, 6)))
+            score = sum(c[2] for c in components)
+
+            # Build indicator list ranked by absolute contribution.
+            mean_contribution = score / len(components) if components else 0.0
+            indicators = []
+            for name, value, contribution in components:
+                indicators.append({
+                    "name": name,
+                    "value": round(value, 6),
+                    "contribution": round(contribution, 6),
+                    "direction": "positive" if contribution >= mean_contribution else "negative",
+                })
+            indicators.sort(key=lambda x: abs(x["contribution"]), reverse=True)
+
+            scored.append((cid, round(score, 6), indicators))
 
         # ── sort and return top-k ────────────────────────────────────
         scored.sort(key=lambda x: x[1], reverse=True)
