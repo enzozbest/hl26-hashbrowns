@@ -125,15 +125,42 @@ def _load_pipeline(settings: Optional[Settings] = None) -> InferencePipeline:
             ckpt_dir,
         )
 
+    # Back-fill council_name from the SQLite cache when the checkpoint
+    # was saved without names (the stats endpoint doesn't return them).
+    missing_names = [cs for cs in council_stats.values() if not cs.council_name]
+    if missing_names:
+        try:
+            import sqlite3
+
+            db_path = Path(__file__).resolve().parents[2] / "python" / "data" / "ibex_data" / "ibex.db"
+            if db_path.exists():
+                conn = sqlite3.connect(db_path)
+                rows = conn.execute(
+                    "SELECT DISTINCT council_id, council_name "
+                    "FROM ibex_applications WHERE council_name IS NOT NULL",
+                ).fetchall()
+                conn.close()
+                name_lookup = {cid: name for cid, name in rows}
+                n_names = 0
+                for cs in missing_names:
+                    name = name_lookup.get(cs.council_id)
+                    if name:
+                        cs.council_name = name
+                        n_names += 1
+                if n_names:
+                    logger.info("Back-filled council_name for %d councils from DB", n_names)
+        except Exception:
+            logger.debug("Could not back-fill council names from DB")
+
     # Back-fill region for council stats that were saved before the
     # region field was added.
     try:
-        from data.regions import COUNCIL_REGION
+        from data.regions import resolve_council_region
 
         n_filled = 0
         for cs in council_stats.values():
             if cs.region is None and cs.council_name:
-                cs.region = COUNCIL_REGION.get(cs.council_name)
+                cs.region = resolve_council_region(cs.council_name)
                 if cs.region:
                     n_filled += 1
         if n_filled:

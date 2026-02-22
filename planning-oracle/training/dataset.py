@@ -292,14 +292,27 @@ async def build_datasets(
         )
         all_stats.append(stats)
 
+    # Populate council_name from application data — the stats endpoint
+    # does not return council names, so we extract them from the
+    # applications we already fetched.
+    _name_lookup: dict[int, str] = {}
+    for app in all_apps:
+        if app.council_name and app.council_id not in _name_lookup:
+            _name_lookup[app.council_id] = app.council_name
+    for stats in all_stats:
+        if not stats.council_name and stats.council_id in _name_lookup:
+            stats.council_name = _name_lookup[stats.council_id]
+    logger.info("Populated council_name for %d/%d stats from applications",
+                sum(1 for s in all_stats if s.council_name), len(all_stats))
+
     # Annotate each council with its canonical region so the inference
     # pipeline can filter by region without needing the full mapping at
     # runtime.
-    from data.regions import COUNCIL_REGION
+    from data.regions import resolve_council_region
 
     for stats in all_stats:
         if stats.council_name and stats.region is None:
-            stats.region = COUNCIL_REGION.get(stats.council_name)
+            stats.region = resolve_council_region(stats.council_name)
 
     # Enrich council stats with external data (HDT + green belt).
     external_data = load_external_data()
