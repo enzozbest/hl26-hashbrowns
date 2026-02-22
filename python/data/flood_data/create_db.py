@@ -11,7 +11,7 @@ DB_PATH = DATA_DIR / "flood.db"
 DOWNLOAD_INSTRUCTIONS = """
 Flood zone data not found. Please download it manually:
 
-  1. Go to: https://www.data.gov.uk/dataset/bed63fc1-dd26-4685-b143-2941088923b3/flood-map-for-planning-flood-zones
+  1. Go to: https://environment.data.gov.uk/dataset/04532375-a198-476e-985e-0579a0a11b47
   2. Download: Flood_Map_for_Planning_Flood_Zones.gpkg.zip
   3. Place the zip file at:
      {zip_path}
