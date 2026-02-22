@@ -15,8 +15,14 @@ import argparse
 import asyncio
 import logging
 import sys
+import os
 from pathlib import Path
 from typing import Optional
+
+# ── Fix sys.path BEFORE any local imports (needed by DataLoader workers) ──
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
 import numpy as np
 import torch
@@ -32,6 +38,7 @@ from model.approval_model import ApprovalModel, FocalLoss, count_parameters
 from training.dataset import PlanningDataset, build_dataloaders, build_datasets
 
 logger = logging.getLogger(__name__)
+
 
 # ── Calibration metric ───────────────────────────────────────────────────────
 

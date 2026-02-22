@@ -387,7 +387,7 @@ def build_dataloaders(
         ``(train_loader, val_loader, test_loader)``
     """
     pin = torch.cuda.is_available()
-    workers = 4
+    workers = 0
 
     # ── class-balanced sampler for train ──────────────────────────────
     labels_np = train.labels.numpy()
