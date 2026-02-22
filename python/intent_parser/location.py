@@ -924,6 +924,23 @@ REGIONS: dict[str, list[str]] = {
     ],
 }
 
+# Auto-populate REGIONS from UK_COUNCILS for any region not already listed.
+# This ensures every council's "region" value can be resolved as a region filter.
+for _name, _data in UK_COUNCILS.items():
+    _rgn = _data["region"]
+    if _rgn not in REGIONS:
+        REGIONS[_rgn] = []
+    # Add council if not already present (avoids duplicates with hand-curated lists)
+    if _name not in REGIONS[_rgn]:
+        REGIONS[_rgn].append(_name)
+
+    # Also index by sub_region if it differs from region and isn't already a key
+    _sub = _data.get("sub_region")
+    if _sub and _sub != _rgn and _sub not in REGIONS:
+        REGIONS[_sub] = []
+    if _sub and _sub != _rgn and _name not in REGIONS[_sub]:
+        REGIONS[_sub].append(_name)
+
 
 # ---------------------------------------------------------------------------
 # Internal lookup indices (built once at import time)
