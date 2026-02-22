@@ -1,17 +1,17 @@
-"""Post-hoc probability calibration via Platt scaling (temperature + bias).
+"""Post-hoc probability calibration: Platt scaling + isotonic regression.
 
 After training, a neural network's predicted probabilities are often
 *miscalibrated* — a prediction of "80 % approved" may actually correspond
-to a 65 % empirical rate.  Platt scaling learns a temperature *T* > 0 and
-a bias *b* such that ``sigmoid((logit + b) / T)`` produces well-calibrated
-probabilities.
+to a 65 % empirical rate.  This module provides a three-phase calibration
+pipeline:
 
-Fitting has two phases:
-
-1. **NLL phase** — LBFGS minimises binary cross-entropy on the validation
-   set (the classic approach from Guo et al. 2017).
-2. **ECE phase** — SGD fine-tunes the parameters using a differentiable
-   ECE proxy to directly push ECE towards zero.
+1. **Platt scaling** (temperature + bias) — LBFGS minimises NLL on the
+   validation set.  Corrects the *linear* component of miscalibration.
+2. **ECE fine-tuning** — Adam minimises a differentiable ECE proxy to
+   push calibration error down further within the linear constraint.
+3. **Isotonic regression** — a non-parametric monotonic mapping that
+   corrects any *residual non-linear* miscalibration (e.g. from focal
+   loss or weighted sampling).
 
 The :class:`TemperatureScaler` is fitted on the **validation set** (never
 the training set).
@@ -28,6 +28,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from sklearn.isotonic import IsotonicRegression
 from torch.utils.data import DataLoader
 
 from model.approval_model import ApprovalModel
@@ -98,12 +99,14 @@ def _hard_ece(
 
 
 class TemperatureScaler(nn.Module):
-    """Platt scaler for binary logits (temperature + bias).
+    """Platt scaler + isotonic regression for binary logits.
 
-    Learns ``P(y=1) = sigmoid((logit + bias) / temperature)`` to produce
-    well-calibrated probabilities.  The bias term (absent in pure temperature
-    scaling) helps correct systematic over- or under-prediction, which is
-    common with imbalanced datasets or focal-loss training.
+    Three-phase calibration:
+
+    1. Platt scaling: ``P = sigmoid((logit + bias) / temperature)``
+    2. ECE fine-tuning: gradient descent on a differentiable ECE proxy
+    3. Isotonic regression: non-parametric monotonic correction for any
+       residual non-linear miscalibration (critical when using focal loss)
 
     After :meth:`fit`, call :meth:`calibrate` to convert raw logits into
     calibrated probabilities.
@@ -113,6 +116,7 @@ class TemperatureScaler(nn.Module):
         super().__init__()
         self.temperature = nn.Parameter(torch.ones(1) * 1.5)
         self.bias = nn.Parameter(torch.zeros(1))
+        self._isotonic: Optional[IsotonicRegression] = None
 
     # ── fitting ─────────────────────────────────────────────────────────
 
@@ -156,15 +160,18 @@ class TemperatureScaler(nn.Module):
         target_ece: float = 0.03,
         device: Optional[torch.device] = None,
     ) -> float:
-        """Optimise temperature *T* and bias *b* on the validation set.
+        """Optimise calibration parameters on the validation set.
 
         **Phase 1 (NLL):** LBFGS minimises the binary cross-entropy of
-        ``sigmoid((logit + b) / T)`` against the true labels. Multiple
-        outer steps run until convergence.
+        ``sigmoid((logit + b) / T)`` against the true labels.
 
         **Phase 2 (ECE):** If ECE is still above *target_ece*, Adam
-        fine-tunes *T* and *b* using a differentiable ECE proxy to
-        directly minimise calibration error.
+        fine-tunes *T* and *b* using a differentiable ECE proxy.
+
+        **Phase 3 (Isotonic):** If ECE is *still* above *target_ece*,
+        fit an isotonic regression on the Platt-scaled probabilities to
+        correct any residual non-linear miscalibration (e.g. from focal
+        loss or weighted sampling).
 
         Args:
             model: Trained (frozen) :class:`ApprovalModel`.
@@ -173,7 +180,7 @@ class TemperatureScaler(nn.Module):
             max_iter: Max LBFGS iterations per outer step.
             ece_lr: Adam learning rate for Phase 2.
             ece_steps: Max gradient steps for Phase 2.
-            target_ece: Stop Phase 2 early when ECE drops below this.
+            target_ece: Stop early when ECE drops below this.
             device: Device for optimisation (inferred from model if *None*).
 
         Returns:
@@ -185,6 +192,8 @@ class TemperatureScaler(nn.Module):
         logits, labels = self._collect_logits(model, val_loader, device)
         self.to(device)
 
+        labels_np = labels.cpu().numpy()
+
         # ── Phase 1: NLL optimisation via LBFGS ──────────────────────
         optimizer = torch.optim.LBFGS(
             [self.temperature, self.bias],
@@ -195,7 +204,7 @@ class TemperatureScaler(nn.Module):
         )
 
         prev_loss = float("inf")
-        for step in range(20):  # multiple outer steps for convergence
+        for step in range(20):
             def _closure() -> torch.Tensor:
                 optimizer.zero_grad()
                 scaled = self._scaled_logits(logits)
@@ -210,10 +219,8 @@ class TemperatureScaler(nn.Module):
                 break
             prev_loss = loss_val
 
-        # Compute ECE after Phase 1
         with torch.no_grad():
             probs_np = torch.sigmoid(self._scaled_logits(logits)).cpu().numpy()
-            labels_np = labels.cpu().numpy()
         ece_after_nll = _hard_ece(probs_np, labels_np)
 
         logger.info(
@@ -225,14 +232,14 @@ class TemperatureScaler(nn.Module):
         )
 
         # ── Phase 2: ECE fine-tuning via Adam ────────────────────────
-        if ece_after_nll > target_ece:
+        current_ece = ece_after_nll
+
+        if current_ece > target_ece:
             logger.info(
                 "Phase 2 (ECE): fine-tuning to push ECE below %.4f …",
                 target_ece,
             )
 
-            # Use combined loss: NLL + ECE weight to maintain good NLL
-            # while driving ECE down
             ece_optimizer = torch.optim.Adam(
                 [self.temperature, self.bias], lr=ece_lr,
             )
@@ -240,7 +247,7 @@ class TemperatureScaler(nn.Module):
                 ece_optimizer, mode="min", factor=0.5, patience=50,
             )
 
-            best_ece = ece_after_nll
+            best_ece = current_ece
             best_state = {
                 "temperature": self.temperature.data.clone(),
                 "bias": self.bias.data.clone(),
@@ -253,18 +260,14 @@ class TemperatureScaler(nn.Module):
 
                 nll = F.binary_cross_entropy_with_logits(scaled, labels)
                 ece_loss = _differentiable_ece(probs, labels)
-                # Weighted combination — ECE dominates but NLL keeps
-                # the solution from degenerating
                 loss = 0.1 * nll + ece_loss
                 loss.backward()
                 ece_optimizer.step()
                 ece_scheduler.step(ece_loss)
 
-                # Clamp temperature to stay positive
                 with torch.no_grad():
                     self.temperature.data.clamp_(min=0.01)
 
-                # Check hard ECE periodically
                 if step % 50 == 0 or step == ece_steps:
                     with torch.no_grad():
                         cur_probs = torch.sigmoid(
@@ -292,39 +295,94 @@ class TemperatureScaler(nn.Module):
                         )
                         break
 
-            # Restore best parameters
             with torch.no_grad():
                 self.temperature.data.copy_(best_state["temperature"])
                 self.bias.data.copy_(best_state["bias"])
 
+            current_ece = best_ece
             logger.info(
                 "Phase 2 done: T=%.4f  b=%.4f  ECE=%.4f → %.4f",
                 self.temperature.item(),
                 self.bias.item(),
                 ece_after_nll,
-                best_ece,
+                current_ece,
             )
         else:
             logger.info(
                 "ECE already at %.4f (below target %.4f) — skipping Phase 2",
-                ece_after_nll, target_ece,
+                current_ece, target_ece,
             )
 
+        # ── Phase 3: Isotonic regression (non-parametric) ────────────
+        if current_ece > target_ece:
+            logger.info(
+                "Phase 3 (Isotonic): fitting non-parametric correction "
+                "(ECE=%.4f still above %.4f) …",
+                current_ece,
+                target_ece,
+            )
+
+            # Get Platt-scaled probabilities as input to isotonic regression
+            with torch.no_grad():
+                platt_probs = (
+                    torch.sigmoid(self._scaled_logits(logits)).cpu().numpy()
+                )
+
+            self._isotonic = IsotonicRegression(
+                y_min=0.0, y_max=1.0, out_of_bounds="clip",
+            )
+            self._isotonic.fit(platt_probs, labels_np)
+
+            iso_probs = self._isotonic.predict(platt_probs)
+            ece_after_iso = _hard_ece(iso_probs, labels_np)
+
+            logger.info(
+                "Phase 3 done: ECE=%.4f → %.4f",
+                current_ece,
+                ece_after_iso,
+            )
+            current_ece = ece_after_iso
+        else:
+            logger.info(
+                "ECE at %.4f (below target %.4f) — skipping Phase 3",
+                current_ece, target_ece,
+            )
+
+        logger.info(
+            "Calibration complete: T=%.4f  b=%.4f  isotonic=%s  final_ECE=%.4f",
+            self.temperature.item(),
+            self.bias.item(),
+            self._isotonic is not None,
+            current_ece,
+        )
         return self.temperature.item()
 
     # ── inference ───────────────────────────────────────────────────────
 
     @torch.no_grad()
     def calibrate(self, logits: torch.Tensor) -> torch.Tensor:
-        """Apply Platt scaling and return calibrated probabilities.
+        """Apply full calibration pipeline and return calibrated probabilities.
+
+        1. Platt scaling: ``sigmoid((logits + bias) / T)``
+        2. Isotonic regression (if fitted): non-parametric monotonic correction
 
         Args:
             logits: Raw logits — any shape (scalar, 1-D, or 2-D).
 
         Returns:
-            ``sigmoid((logits + bias) / T)`` with the same shape as input.
+            Calibrated probabilities with the same shape as input.
         """
-        return torch.sigmoid(self._scaled_logits(logits))
+        probs = torch.sigmoid(self._scaled_logits(logits))
+
+        if self._isotonic is not None:
+            shape = probs.shape
+            probs_np = probs.cpu().numpy().ravel()
+            cal_np = self._isotonic.predict(probs_np)
+            probs = torch.as_tensor(
+                cal_np.reshape(shape), dtype=probs.dtype,
+            )
+
+        return probs
 
     # ── persistence ─────────────────────────────────────────────────────
 
@@ -339,12 +397,16 @@ class TemperatureScaler(nn.Module):
                 {
                     "temperature": self.temperature.item(),
                     "bias": self.bias.item(),
+                    "isotonic": self._isotonic,
                 },
                 f,
             )
         logger.info(
-            "TemperatureScaler saved to %s (T=%.4f, b=%.4f)",
-            path, self.temperature.item(), self.bias.item(),
+            "TemperatureScaler saved to %s (T=%.4f, b=%.4f, isotonic=%s)",
+            path,
+            self.temperature.item(),
+            self.bias.item(),
+            self._isotonic is not None,
         )
 
     @classmethod
@@ -366,8 +428,12 @@ class TemperatureScaler(nn.Module):
         inst.bias = nn.Parameter(
             torch.tensor([state.get("bias", 0.0)]),
         )
+        inst._isotonic = state.get("isotonic", None)
         logger.info(
-            "TemperatureScaler loaded from %s (T=%.4f, b=%.4f)",
-            path, inst.temperature.item(), inst.bias.item(),
+            "TemperatureScaler loaded from %s (T=%.4f, b=%.4f, isotonic=%s)",
+            path,
+            inst.temperature.item(),
+            inst.bias.item(),
+            inst._isotonic is not None,
         )
         return inst

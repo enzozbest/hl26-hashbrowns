@@ -9,7 +9,7 @@ UVICORN  := uv run uvicorn
 
 EPOCHS       ?= 50
 BATCH_SIZE   ?= 64
-LR           ?= 0.001
+LR           ?= 3e-5
 CHECKPOINT   ?= checkpoints
 PORT         ?= 8000
 COUNCILS     ?=

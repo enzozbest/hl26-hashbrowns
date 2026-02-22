@@ -18,7 +18,7 @@ from typing import Optional
 import numpy as np
 import polars as pl
 import torch
-from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset
 
 from data.api_client import PlanningAPIClient
 from data.schema import CouncilStats, PlanningApplication
@@ -369,13 +369,17 @@ def build_dataloaders(
     test: PlanningDataset,
     batch_size: int = 256,
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
-    """Create DataLoaders with class-balanced sampling for the train split.
+    """Create DataLoaders. Class imbalance is handled via pos_weight in
+    BCEWithLogitsLoss (set in train.py), NOT via resampling.
 
-    * **Train**: :class:`WeightedRandomSampler` with weights inversely
-      proportional to class frequency, ``drop_last=True``.
+    Resampling to 50/50 with WeightedRandomSampler causes the model to
+    learn calibrated probabilities for an artificial balanced world, which
+    leads to high ECE at inference time when the true class distribution
+    is skewed. pos_weight is the correct approach: it up-weights the loss
+    on minority-class examples without distorting the predicted probabilities.
+
+    * **Train**: ``shuffle=True``, ``drop_last=True``.
     * **Val / Test**: sequential iteration, ``shuffle=False``.
-    * All loaders use ``num_workers=4`` and ``pin_memory=True`` when
-      CUDA is available.
 
     Args:
         train: Training dataset.
@@ -389,25 +393,10 @@ def build_dataloaders(
     pin = torch.cuda.is_available()
     workers = 4
 
-    # ── class-balanced sampler for train ──────────────────────────────
-    labels_np = train.labels.numpy()
-    class_counts = np.bincount(labels_np.astype(int), minlength=2).astype(
-        np.float64,
-    )
-    # Weight each class inversely proportional to its frequency.
-    class_weights = np.where(class_counts > 0, 1.0 / class_counts, 0.0)
-    sample_weights = class_weights[labels_np.astype(int)]
-
-    sampler = WeightedRandomSampler(
-        weights=torch.as_tensor(sample_weights, dtype=torch.double),
-        num_samples=len(train),
-        replacement=True,
-    )
-
     train_loader = DataLoader(
         train,
         batch_size=batch_size,
-        sampler=sampler,        # handles shuffling
+        shuffle=True,
         drop_last=True,
         num_workers=workers,
         pin_memory=pin,

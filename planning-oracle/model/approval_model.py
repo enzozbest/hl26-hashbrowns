@@ -1,15 +1,18 @@
-"""Multi-branch approval neural network with focal loss.
+"""Multi-branch approval neural network.
 
 Architecture overview
 ─────────────────────
-Three independent sub-networks (text, application, council) each produce a
-128-d representation.  These are concatenated and passed through a fusion
-head that outputs a single raw logit.  Applying ``torch.sigmoid`` externally
-converts the logit to an approval probability.
+Three independent sub-networks produce compact representations that are
+concatenated and passed through a fusion head outputting a single logit.
 
-The :class:`FocalLoss` criterion down-weights well-classified examples so
-the model focuses on hard / borderline decisions — essential when one class
-dominates.
+* Text branch:    384 → 128 → 64
+* App branch:     num_app_features → 64 → 64
+* Council branch: num_council_features → 32 → 32
+* Fusion:         160 → 64 → 1
+
+Total parameters: ~80–90k (down from 285k), reducing overfitting on the
+temporal test split.  Class imbalance is handled via ``pos_weight`` in
+``BCEWithLogitsLoss`` rather than resampling, preserving calibration.
 """
 
 from __future__ import annotations
@@ -52,44 +55,51 @@ class ApprovalModel(nn.Module):
         super().__init__()
 
         # ── text branch ─────────────────────────────────────────────────
+        # 384 → 128 → 64  (was 384 → 256 → 128)
+        # The embedding already encodes semantic structure; a large first
+        # layer mostly memorises training examples.
         self.text_branch = nn.Sequential(
-            nn.Linear(text_embed_dim, 256),
+            nn.Linear(text_embed_dim, 128),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(256, 128),
+            nn.Linear(128, 64),
             nn.ReLU(),
-            nn.LayerNorm(128),
+            nn.LayerNorm(64),
         )
 
         # ── application branch ──────────────────────────────────────────
+        # input → 64 → 64  (was input → 128 → 128)
+        # Dropout raised to 0.3 to match text branch regularisation.
         self.app_branch = nn.Sequential(
-            nn.Linear(num_app_features, 128),
+            nn.Linear(num_app_features, 64),
             nn.ReLU(),
-            nn.BatchNorm1d(128),
-            nn.Dropout(0.2),
-            nn.Linear(128, 128),
+            nn.BatchNorm1d(64),
+            nn.Dropout(0.3),
+            nn.Linear(64, 64),
             nn.ReLU(),
-            nn.LayerNorm(128),
+            nn.LayerNorm(64),
         )
 
         # ── council branch ──────────────────────────────────────────────
+        # 8 → 32 → 32  (was 8 → 128 → 128)
+        # Projecting 8 features into 128 dims is the most over-parameterised
+        # part of the original model — pure memorisation of council identity.
+        # No BatchNorm here since the input is already small and normalised.
         self.council_branch = nn.Sequential(
-            nn.Linear(num_council_features, 128),
+            nn.Linear(num_council_features, 32),
             nn.ReLU(),
-            nn.BatchNorm1d(128),
             nn.Dropout(0.2),
-            nn.Linear(128, 128),
+            nn.Linear(32, 32),
             nn.ReLU(),
-            nn.LayerNorm(128),
+            nn.LayerNorm(32),
         )
 
         # ── fusion head ─────────────────────────────────────────────────
+        # (64 + 64 + 32) = 160 → 64 → 1  (was 384 → 256 → 64 → 1)
         self.fusion = nn.Sequential(
-            nn.Linear(384, 256),
+            nn.Linear(64 + 64 + 32, 64),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(256, 64),
-            nn.ReLU(),
             nn.Linear(64, 1),
         )
 
@@ -173,8 +183,9 @@ class ApprovalModel(nn.Module):
 
         Returns:
             Dict with keys ``text``, ``app``, ``council`` mapping to
-            ``(B, 128)`` tensors, plus ``fused`` for the concatenation
-            and ``logit`` for the final output.
+            ``(B, 64)``, ``(B, 64)``, ``(B, 32)`` tensors respectively,
+            plus ``fused`` for the 160-d concatenation and ``logit`` for
+            the final output.
         """
         was_training = self.training
         self.eval()
