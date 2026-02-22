@@ -133,9 +133,9 @@ def run_calibrate(
 
     model = load_model(
         checkpoint_path,
-        text_dim=checkpoint.get("text_dim", config.embedding_dim),
-        app_dim=checkpoint.get("app_dim", 15),
-        council_dim=checkpoint.get("council_dim", 10),
+        text_embed_dim=checkpoint.get("text_dim", config.embedding_dim),
+        num_app_features=checkpoint.get("app_dim", 15),
+        num_council_features=checkpoint.get("council_dim", 10),
     )
 
     scaler = TemperatureScaler()
@@ -198,9 +198,9 @@ def run_evaluate(
 
     model = load_model(
         checkpoint_path,
-        text_dim=checkpoint.get("text_dim", config.embedding_dim),
-        app_dim=checkpoint.get("app_dim", 15),
-        council_dim=checkpoint.get("council_dim", 10),
+        text_embed_dim=checkpoint.get("text_dim", config.embedding_dim),
+        num_app_features=checkpoint.get("app_dim", 15),
+        num_council_features=checkpoint.get("council_dim", 10),
     )
 
     scaler_path = Path(checkpoint_dir) / "temperature_scaler.pkl"

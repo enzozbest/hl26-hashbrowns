@@ -4,11 +4,15 @@ Wraps :class:`hashbrowns.ibex.client.IbexClient` from the sibling ``python``
 package and adapts its response models to the planning-oracle schema types so
 that all consuming code (training, dataset, pipeline) continues to work
 unchanged.
+
+Fetched data is cached in a local SQLite database so that repeated training
+runs can reuse previously-fetched data without hitting the API again.
 """
 
 from __future__ import annotations
 
 import logging
+import sqlite3
 import sys
 from pathlib import Path
 from typing import Optional, Union
@@ -27,13 +31,38 @@ _PYTHON_PKG_DIR = str(Path(__file__).resolve().parents[2] / "python")
 if _PYTHON_PKG_DIR not in sys.path:
     sys.path.insert(0, _PYTHON_PKG_DIR)
 
+# The python/data/ dir is added separately so we can import ibex_data.*
+# without conflicting with the planning-oracle's own `data` package (which
+# is already cached in sys.modules).
+_PYTHON_DATA_DIR = str(Path(__file__).resolve().parents[2] / "python" / "data")
+if _PYTHON_DATA_DIR not in sys.path:
+    sys.path.insert(0, _PYTHON_DATA_DIR)
+
 from hashbrowns.ibex.client import IbexClient  # noqa: E402
 from hashbrowns.ibex.models import (  # noqa: E402
     ApplicationsResponse,
     StatsResponse,
 )
 
+from ibex_data.create_db import (  # noqa: E402
+    init_db,
+    insert_application_records,
+    insert_stats_records,
+)
+from ibex_data.parse import (  # noqa: E402
+    application_to_record,
+    records_to_applications,
+    records_to_stats,
+    stats_to_record,
+)
+
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# SQLite cache location
+# ---------------------------------------------------------------------------
+
+_IBEX_DB_PATH = Path(__file__).resolve().parents[2] / "python" / "data" / "ibex_data" / "ibex.db"
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +225,8 @@ class PlanningAPIClient:
     ) -> None:
         self._settings = settings or get_settings()
         self._ibex = IbexClient(_IbexSettings(self._settings))
+        self._db_path = _IBEX_DB_PATH
+        init_db(self._db_path)
 
     async def __aenter__(self) -> PlanningAPIClient:
         await self._ibex.__aenter__()
@@ -217,15 +248,33 @@ class PlanningAPIClient:
         date_range_type: str = "determined",
         extensions: object = None,
         filters: object = None,
+        force_refresh: bool = False,
     ) -> list[PlanningApplication]:
         """Fetch applications for a council via the Ibex /applications
         endpoint, converting results to planning-oracle schema models.
+
+        Results are cached in a local SQLite database. On subsequent calls
+        for the same council, cached data is returned directly unless
+        *force_refresh* is ``True``.
 
         Paginates up to *max_pages* pages of *page_size* results each
         (default: 10 pages x 1000 = 10,000 applications max).
         """
 
         council_id_str = str(council_id)
+        council_id_int = int(council_id_str) if council_id_str.isdigit() else 0
+
+        # -- Check cache first --
+        if not force_refresh:
+            cached = self._load_cached_applications(council_id_int)
+            if cached:
+                applications = [_ibex_app_to_schema(r) for r in cached]
+                logger.info(
+                    "search_all_pages: loaded %d cached applications for council %s",
+                    len(applications),
+                    council_id,
+                )
+                return applications
 
         ibex_extensions = None
         if extensions is not None:
@@ -272,6 +321,16 @@ class PlanningAPIClient:
             if len(batch) < page_size:
                 break
 
+        # -- Upsert into cache --
+        if all_responses:
+            records = [application_to_record(r) for r in all_responses]
+            insert_application_records(records, self._db_path)
+            logger.info(
+                "search_all_pages: cached %d applications for council %s",
+                len(records),
+                council_id,
+            )
+
         applications = [_ibex_app_to_schema(r) for r in all_responses]
         logger.info(
             "search_all_pages: fetched %d applications for council %s (%d pages)",
@@ -314,8 +373,14 @@ class PlanningAPIClient:
         *,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
+        force_refresh: bool = False,
     ) -> CouncilStats:
-        """Fetch council statistics via the Ibex /stats endpoint."""
+        """Fetch council statistics via the Ibex /stats endpoint.
+
+        Results are cached in a local SQLite database. On subsequent calls
+        for the same council and date range, cached data is returned directly
+        unless *force_refresh* is ``True``.
+        """
 
         d_from = date_from or "2015-01-01"
         d_to = date_to or "2030-12-31"
@@ -323,15 +388,79 @@ class PlanningAPIClient:
         council_id_str = str(council_id)
         council_id_int = int(council_id_str) if council_id_str.isdigit() else 0
 
+        # -- Check cache first --
+        if not force_refresh:
+            cached = self._load_cached_stats(council_id_int, d_from, d_to)
+            if cached:
+                result = _ibex_stats_to_schema(cached[0], council_id_str)
+                logger.info(
+                    "get_council_stats: loaded cached stats for council %s",
+                    council_id_str,
+                )
+                return result
+
         stats = await self._ibex.stats(
             council_id=council_id_int,
             date_from=d_from,
             date_to=d_to,
         )
 
+        # -- Upsert into cache --
+        record = stats_to_record(stats, council_id_int, d_from, d_to)
+        insert_stats_records([record], self._db_path)
+        logger.info(
+            "get_council_stats: cached stats for council %s", council_id_str,
+        )
+
         result = _ibex_stats_to_schema(stats, council_id_str)
         logger.info("get_council_stats: fetched stats for council %s", council_id_str)
         return result
+
+    # ── cache helpers ──────────────────────────────────────────────────
+
+    def _load_cached_applications(
+        self, council_id: int,
+    ) -> list[ApplicationsResponse]:
+        """Return cached ``ApplicationsResponse`` models for a council, or
+        an empty list if none exist."""
+        try:
+            conn = sqlite3.connect(self._db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM ibex_applications WHERE council_id = ?",
+                (council_id,),
+            )
+            rows = cursor.fetchall()
+            conn.close()
+            if rows:
+                return records_to_applications(rows)
+        except Exception:
+            logger.debug("No cached applications for council %s", council_id)
+        return []
+
+    def _load_cached_stats(
+        self, council_id: int, date_from: str, date_to: str,
+    ) -> list[StatsResponse]:
+        """Return cached ``StatsResponse`` models for a council + date range,
+        or an empty list if none exist."""
+        try:
+            conn = sqlite3.connect(self._db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM ibex_council_stats "
+                "WHERE council_id = ? AND date_from = ? AND date_to = ?",
+                (council_id, date_from, date_to),
+            )
+            rows = cursor.fetchall()
+            conn.close()
+            if rows:
+                return records_to_stats(rows)
+        except Exception:
+            logger.debug(
+                "No cached stats for council %s (%s – %s)",
+                council_id, date_from, date_to,
+            )
+        return []
 
     # ── lookup_applications (kept for compatibility) ──────────────────
 
