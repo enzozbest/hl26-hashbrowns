@@ -78,6 +78,7 @@ function riskMeta(pct: number) {
 // ── Types ────────────────────────────────────────────────────────────────────
 interface MapState {
   query:            string
+  analysisId:       string
   analyseResults:   CouncilResult[]
   regions?:         string[]
   addedCouncils?:   string[]
@@ -86,10 +87,12 @@ interface MapState {
 interface SelectedBorough { name: string; councilId: number; pct: number | undefined }
 
 // ── BoroughDetail panel ──────────────────────────────────────────────────────
-function BoroughDetail({ name, pct, onClose }: {
-  name: string
-  pct:  number | undefined
-  onClose: () => void
+function BoroughDetail({ name, pct, councilId, analysisId, onClose }: {
+  name:       string
+  pct:        number | undefined
+  councilId:  number
+  analysisId: string
+  onClose:    () => void
 }) {
   const meta = pct !== undefined ? riskMeta(pct) : null
 
@@ -161,12 +164,37 @@ function BoroughDetail({ name, pct, onClose }: {
         </p>
       )}
 
+      <a
+        href={`http://localhost:8000/api/analyse/${analysisId}/report?id=${councilId}`}
+        target="_blank"
+        rel="noreferrer"
+        style={{
+          display:        'block',
+          width:          '100%',
+          marginBottom:   10,
+          padding:        '8px 0',
+          textAlign:      'center',
+          fontFamily:     'Inter, sans-serif',
+          fontSize:       10,
+          fontWeight:     600,
+          letterSpacing:  '0.16em',
+          textTransform:  'uppercase',
+          color:          C.accent,
+          background:     C.accentFaint,
+          border:         `1px solid ${C.accentDim}`,
+          textDecoration: 'none',
+          cursor:         'pointer',
+        }}
+      >
+        ↓ Download Report
+      </a>
+
       <button onClick={onClose} style={{
         fontFamily: 'Inter, sans-serif', fontSize: 10, letterSpacing: '0.14em',
         textTransform: 'uppercase', color: C.textFaint, background: 'none',
         border: 'none', cursor: 'pointer', padding: 0,
       }}>
-        ← Back to overview
+        ← The Back to overview
       </button>
     </div>
   )
@@ -557,7 +585,7 @@ export default function MapPage() {
           </button>
 
           {selected && (
-            <BoroughDetail name={selected.name} pct={selected.pct} onClose={handleReset} />
+            <BoroughDetail name={selected.name} pct={selected.pct} councilId={selected.councilId} analysisId={state.analysisId} onClose={handleReset} />
           )}
         </>
       )}

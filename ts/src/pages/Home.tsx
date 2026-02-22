@@ -97,7 +97,7 @@ export default function Home() {
                 ...addedIds,
             ]
             const data = await submitAnalyse(effectiveIds, query)
-            navigate('/map', {state: {query, analyseResults: data.scores, regions, addedCouncils, removedCouncils}})
+            navigate('/map', {state: {query, analysisId: data.analysis_id, analyseResults: data.scores, regions, addedCouncils, removedCouncils}})
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Failed to submit analysis'
             setError(errorMessage)
