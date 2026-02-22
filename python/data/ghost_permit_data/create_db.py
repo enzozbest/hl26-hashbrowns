@@ -18,7 +18,8 @@ def init_db(db_path):
         CREATE TABLE IF NOT EXISTS ghost_permit_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             lpa_number TEXT,
-            borough TEXT
+            borough TEXT,
+            council_id INTEGER
         )
     """)
 
@@ -31,8 +32,8 @@ def insert_records(records, db_path):
     cursor = conn.cursor()
 
     cursor.executemany("""
-        INSERT INTO ghost_permit_data (lpa_number, borough)
-        VALUES (?, ?)
+        INSERT INTO ghost_permit_data (lpa_number, borough, council_id)
+        VALUES (?, ?, ?)
     """, records)
 
     conn.commit()

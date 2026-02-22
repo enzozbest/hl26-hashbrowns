@@ -16,6 +16,7 @@ def init_db(db_path):
             year TEXT,
             local_authority_code TEXT,
             local_authority_name TEXT,
+            council_id INTEGER,
             region_name TEXT,
             mean_disposable_income REAL
         )
@@ -31,9 +32,10 @@ def insert_records(records, db_path):
 
     cursor.executemany("""
         INSERT INTO income_data (
-            year, local_authority_code, local_authority_name,
+            year, local_authority_code, local_authority_name, council_id,
             region_name, mean_disposable_income
-        ) VALUES (?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?)
+
     """, records)
 
     conn.commit()
