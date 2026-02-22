@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/analyse", tags=["analyse"])
 
 REPORTS_DIR = Path(__file__).resolve().parent.parent / "reports"
-ORACLE_URL = os.getenv("ORACLE_URL", "http://localhost:8001")
+ORACLE_URL = os.getenv("ORACLE_URL", "http://localhost:8000")
 
 
 class AnalyseRequest(BaseModel):
