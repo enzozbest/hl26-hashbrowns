@@ -65,12 +65,22 @@ class TestCalibration:
 class TestCouncilRanker:
     """Test suite for the council ranking model."""
 
-    def test_rank_returns_top_k(self) -> None:
-        """rank should return exactly top_k results."""
-        # TODO: Verify length of rank output
+    def test_heuristic_rank_returns_top_k(self) -> None:
+        """Heuristic fallback should return exactly top_k results."""
+        # TODO: Verify length of rank_councils output
         ...
 
-    def test_rank_sorted_descending(self) -> None:
-        """rank results should be sorted by affinity_score descending."""
-        # TODO: Verify sort order
+    def test_heuristic_rank_sorted_descending(self) -> None:
+        """Heuristic fallback results should be sorted descending."""
+        # TODO: Verify sort order of rank_councils output
+        ...
+
+    def test_model_rank_returns_top_k(self) -> None:
+        """rank_councils_with_model should return at most top_k dicts."""
+        # TODO: Verify length of rank_councils_with_model output
+        ...
+
+    def test_model_rank_sorted_descending(self) -> None:
+        """rank_councils_with_model results should be sorted by approval_probability."""
+        # TODO: Verify sort order of rank_councils_with_model output
         ...

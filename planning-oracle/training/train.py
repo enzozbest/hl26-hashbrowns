@@ -34,7 +34,7 @@ from data.api_client import PlanningAPIClient
 from features.application import ApplicationFeatureExtractor
 from features.council import CouncilFeatureExtractor
 from features.text import TextEmbedder
-from model.approval_model import ApprovalModel, FocalLoss, count_parameters
+from model.approval_model import ApprovalModel, count_parameters
 from training.dataset import PlanningDataset, build_dataloaders, build_datasets
 
 logger = logging.getLogger(__name__)
@@ -86,10 +86,10 @@ def compute_ece(
 def _train_one_epoch(
     model: ApprovalModel,
     loader: DataLoader,
-    criterion: FocalLoss,
+    criterion: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler.LRScheduler,
     device: torch.device,
+    max_grad_norm: float = 1.0,
 ) -> float:
     """Run one training epoch and return the mean loss."""
     model.train()
@@ -103,11 +103,11 @@ def _train_one_epoch(
         labels = batch["label"].to(device)
 
         optimizer.zero_grad()
-        logits = model(text, app, council)
+        logits = model(text, app, council).squeeze(-1)
         loss = criterion(logits, labels)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
         optimizer.step()
-        scheduler.step()
 
         total_loss += loss.item()
         n_batches += 1
@@ -119,7 +119,7 @@ def _train_one_epoch(
 def _validate(
     model: ApprovalModel,
     loader: DataLoader,
-    criterion: FocalLoss,
+    criterion: torch.nn.Module,
     device: torch.device,
 ) -> dict[str, float]:
     """Run a validation pass and return loss + classification metrics."""
@@ -136,13 +136,13 @@ def _validate(
         text = batch["text_embedding"].to(device)
         labels = batch["label"].to(device)
 
-        logits = model(text, app, council)
+        logits = model(text, app, council).squeeze(-1)
         loss = criterion(logits, labels)
 
         total_loss += loss.item()
         n_batches += 1
 
-        probs = torch.sigmoid(logits).squeeze(-1).cpu().numpy()
+        probs = torch.sigmoid(logits).cpu().numpy()
         all_probs.append(probs)
         all_labels.append(labels.cpu().numpy())
 
@@ -278,20 +278,53 @@ async def train_model(
     logger.info("Model has %s trainable parameters", f"{total_params:,}")
 
     # ── 3. Optimiser, scheduler, loss ────────────────────────────────
+    logger.info("Config learning_rate=%.2e", config.learning_rate)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=config.learning_rate, weight_decay=1e-4,
     )
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-        optimizer, T_0=10, T_mult=2,
+
+    # Two-phase scheduler:
+    #   Phase 1 — LinearLR warmup over the first 3 epochs, ramping from
+    #             10% of the target LR up to 100%.  This prevents the
+    #             large gradient updates on epoch 1 that cause val AUROC
+    #             to peak immediately then decay.
+    #   Phase 2 — ReduceLROnPlateau halves the LR after 5 epochs without
+    #             improvement, giving the model time to settle after the
+    #             warmup before the first reduction.
+    warmup_epochs = 3
+    warmup = torch.optim.lr_scheduler.LinearLR(
+        optimizer,
+        start_factor=0.1,   # begin at 10% of config.learning_rate
+        end_factor=1.0,
+        total_iters=warmup_epochs,
     )
-    criterion = FocalLoss(alpha=0.75, gamma=2.0)
+    plateau = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",     # we pass -val_auroc so lower = better
+        factor=0.5,
+        patience=5,
+        min_lr=1e-6,
+    )
+
+    # No pos_weight — we want the model calibrated to the true class
+    # distribution. The model should learn to predict "approved" most
+    # of the time because that reflects reality (~87% of applications
+    # are approved). Reweighting distorts probabilities and hurts ECE.
+    train_labels = train_ds.labels.numpy()
+    n_pos = int(train_labels.sum())
+    n_neg = int(len(train_labels) - n_pos)
+    logger.info(
+        "Class balance — pos=%d  neg=%d  (%.1f%% positive)",
+        n_pos, n_neg, 100.0 * n_pos / max(len(train_labels), 1),
+    )
+    criterion = torch.nn.BCEWithLogitsLoss()
 
     # ── 4. Training loop with early stopping ─────────────────────────
     checkpoint_dir = Path(config.checkpoint_dir)
     best_path = checkpoint_dir / "best_model.pt"
 
     best_val_auroc = -1.0
-    patience = 10
+    patience = 15  # increased from 10 to give post-warmup LR reductions time
     epochs_without_improvement = 0
 
     history: dict[str, list[float]] = {
@@ -305,9 +338,16 @@ async def train_model(
 
     for epoch in range(1, config.epochs + 1):
         train_loss = _train_one_epoch(
-            model, train_loader, criterion, optimizer, scheduler, device,
+            model, train_loader, criterion, optimizer, device,
         )
         val_metrics = _validate(model, val_loader, criterion, device)
+
+        # Warmup phase: step LinearLR for the first warmup_epochs.
+        # Plateau phase: step ReduceLROnPlateau every epoch after warmup.
+        if epoch <= warmup_epochs:
+            warmup.step()
+        else:
+            plateau.step(-val_metrics["auroc"])
 
         history["train_loss"].append(train_loss)
         history["val_loss"].append(val_metrics["loss"])
@@ -316,15 +356,17 @@ async def train_model(
         history["val_ap"].append(val_metrics["ap"])
         history["val_ece"].append(val_metrics["ece"])
 
+        current_lr = optimizer.param_groups[0]["lr"]
         logger.info(
             "Epoch %d: train_loss=%.4f val_loss=%.4f "
-            "val_auroc=%.4f val_ap=%.4f val_ece=%.4f",
+            "val_auroc=%.4f val_ap=%.4f val_ece=%.4f lr=%.2e",
             epoch,
             train_loss,
             val_metrics["loss"],
             val_metrics["auroc"],
             val_metrics["ap"],
             val_metrics["ece"],
+            current_lr,
         )
 
         # ── checkpoint on improvement ────────────────────────────────

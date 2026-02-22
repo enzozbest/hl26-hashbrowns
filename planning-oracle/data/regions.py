@@ -29,6 +29,7 @@ __all__ = [
     "get_region_for_council",
     "get_council_ids_for_region",
     "normalise_region_name",
+    "resolve_council_region",
 ]
 
 # Map parser / colloquial region names → canonical region names used in
@@ -42,6 +43,49 @@ _REGION_ALIASES: dict[str, str | None] = {
     "wales": None,
     "scotland": None,
 }
+
+
+# Map council names that differ between the Ibex DB and the canonical
+# COUNCIL_REGION dictionary.  Keys are lowered Ibex names, values are
+# the canonical COUNCIL_REGION key.
+_COUNCIL_NAME_ALIASES: dict[str, str] = {
+    "royal greenwich": "Greenwich",
+    "birmingham city": "Birmingham",
+    "leicester city": "Leicester",
+    "milton-keynes": "Milton Keynes",
+    "st helens": "St Helens",  # may need adding to canonical set
+    "adur and worthing": "Adur",  # merged council → use first
+    "babergh and mid-suffolk": "Babergh",  # merged council → use first
+    "north northamptonshire": "North Northamptonshire",
+}
+
+
+def resolve_council_region(council_name: str | None) -> str | None:
+    """Resolve a council name to its canonical region.
+
+    Handles exact matches, known aliases, and simple fuzzy matching
+    (hyphen/space normalisation).
+    """
+    if not council_name:
+        return None
+
+    # Exact match.
+    region = COUNCIL_REGION.get(council_name)
+    if region:
+        return region
+
+    # Try alias table.
+    alias = _COUNCIL_NAME_ALIASES.get(council_name.lower())
+    if alias:
+        return COUNCIL_REGION.get(alias)
+
+    # Normalise hyphens → spaces and retry.
+    normalised = council_name.replace("-", " ")
+    region = COUNCIL_REGION.get(normalised)
+    if region:
+        return region
+
+    return None
 
 
 def normalise_region_name(raw: str | None) -> str | None:
