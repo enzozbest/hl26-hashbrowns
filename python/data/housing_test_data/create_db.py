@@ -3,8 +3,7 @@ from pathlib import Path
 
 from data.housing_test_data.parse import parse_data
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-DB_PATH = PROJECT_ROOT / "housing_test.db"
+DB_PATH = Path(__file__).resolve().parent / "housing_test.db"
 
 
 def init_db(db_path):
@@ -17,6 +16,7 @@ def init_db(db_path):
             year TEXT,
             ons_code TEXT,
             area_name TEXT,
+            council_id INTEGER,
             homes_required_y1 REAL,
             homes_required_y2 REAL,
             homes_required_y3 REAL,
@@ -40,13 +40,14 @@ def insert_records(records, db_path):
 
     cursor.executemany("""
         INSERT INTO housing_delivery_test (
-            year, ons_code, area_name,
+            year, ons_code, area_name, council_id,
             homes_required_y1, homes_required_y2, homes_required_y3,
             total_homes_required,
             homes_delivered_y1, homes_delivered_y2, homes_delivered_y3,
             total_homes_delivered,
             hdt_measurement, hdt_consequence
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+
     """, records)
 
     conn.commit()
