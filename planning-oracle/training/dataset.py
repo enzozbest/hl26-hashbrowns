@@ -245,6 +245,15 @@ async def build_datasets(
         )
         all_stats.append(stats)
 
+    # Annotate each council with its canonical region so the inference
+    # pipeline can filter by region without needing the full mapping at
+    # runtime.
+    from data.regions import COUNCIL_REGION
+
+    for stats in all_stats:
+        if stats.council_name and stats.region is None:
+            stats.region = COUNCIL_REGION.get(stats.council_name)
+
     # Save council stats as JSON for inference-time use.
     if checkpoint_dir is not None:
         stats_path = Path(checkpoint_dir) / "council_stats.json"

@@ -80,14 +80,22 @@ class CouncilRanker:
         intent: ProposalIntent,
         council_stats: dict[int, CouncilStats],
         top_k: int = 15,
+        region: Optional[str] = None,
     ) -> list[tuple[int, float]]:
         """Score and rank councils for a parsed proposal.
+
+        When *region* is provided, only councils whose ``region`` field
+        matches are considered.  Normalisation (speed, volume) is then
+        computed within-region so scores reflect relative standing among
+        regional peers.
 
         Args:
             intent: Structured proposal intent from the parser.
             council_stats: Mapping of ``council_id`` to
                 :class:`CouncilStats` instances.
             top_k: Number of top councils to return.
+            region: If set, restrict ranking to councils in this
+                canonical region (e.g. ``"London"``).
 
         Returns:
             List of ``(council_id, score)`` tuples sorted descending by
@@ -95,6 +103,26 @@ class CouncilRanker:
         """
         if not council_stats:
             return []
+
+        # ── region filter ─────────────────────────────────────────────
+        if region:
+            total = len(council_stats)
+            filtered = {
+                cid: stats
+                for cid, stats in council_stats.items()
+                if getattr(stats, "region", None) == region
+            }
+            if filtered:
+                logger.info(
+                    "Region filter '%s': %d councils (of %d total)",
+                    region, len(filtered), total,
+                )
+                council_stats = filtered
+            else:
+                logger.warning(
+                    "Region '%s' matched 0 councils — falling back to all %d",
+                    region, total,
+                )
 
         project_key = _PROJECT_TYPE_MAP.get(intent.project_type, "residential")
 

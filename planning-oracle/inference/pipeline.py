@@ -23,6 +23,7 @@ from features.text import TextEmbedder
 from inference.parser import ProposalIntent, ProposalParser
 from model.approval_model import ApprovalModel
 from model.calibration import TemperatureScaler
+from data.regions import normalise_region_name
 from model.council_ranker import CouncilRanker
 
 logger = logging.getLogger(__name__)
@@ -145,9 +146,14 @@ class InferencePipeline:
             intent.num_houses, intent.project_type, intent.region,
         )
 
-        # ── 2. Council ranking ───────────────────────────────────────
+        # ── 2. Council ranking (scoped to region when available) ─────
+        canonical_region = normalise_region_name(intent.region)
+        if canonical_region:
+            logger.info("Region scoped: '%s' → '%s'", intent.region, canonical_region)
+
         ranked = self._ranker.rank_councils(
             intent, self._council_stats, top_k=15,
+            region=canonical_region,
         )
 
         # ── 3. Build feature tensors and attributions per council ────
