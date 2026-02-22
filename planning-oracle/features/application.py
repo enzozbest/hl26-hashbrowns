@@ -106,9 +106,13 @@ class ApplicationFeatureExtractor:
         df = self._filter_decisions(df)
         for col in _CATEGORICAL_COLS:
             if col in df.columns:
-                self._categories[col] = (
-                    df[col].drop_nulls().unique().sort().to_list()
-                )
+                non_null = df[col].drop_nulls()
+                if len(non_null) == 0:
+                    self._categories[col] = []
+                else:
+                    self._categories[col] = (
+                        non_null.unique().sort().to_list()
+                    )
             else:
                 self._categories[col] = []
         self._fitted = True

@@ -232,7 +232,7 @@ async def build_datasets(
     all_apps: list[PlanningApplication] = []
     for cid in council_ids:
         apps = await client.search_all_pages(
-            [cid], date_from=date_from, date_to=date_to,
+            str(cid), date_from=date_from, date_to=date_to,
         )
         all_apps.extend(apps)
         logger.info("  %d: %d applications", cid, len(apps))

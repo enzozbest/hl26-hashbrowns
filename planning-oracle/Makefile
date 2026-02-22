@@ -12,6 +12,7 @@ BATCH_SIZE   ?= 64
 LR           ?= 0.001
 CHECKPOINT   ?= checkpoints
 PORT         ?= 8000
+COUNCILS     ?=
 
 # ── Core targets ────────────────────────────────────────────────────────────
 
@@ -19,11 +20,15 @@ install:
 	uv sync
 
 train:
+ifndef COUNCILS
+	$(error COUNCILS is required — e.g. make train COUNCILS="1 2 3")
+endif
 	$(PYTHON) -m training.train \
 		--epochs $(EPOCHS) \
 		--batch-size $(BATCH_SIZE) \
 		--lr $(LR) \
-		--checkpoint-dir $(CHECKPOINT)
+		--checkpoint-dir $(CHECKPOINT) \
+		--councils $(COUNCILS)
 
 evaluate:
 	$(PYTHON) -m training.evaluate

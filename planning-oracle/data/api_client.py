@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from config.settings import Settings, get_settings
 from data.schema import (
@@ -66,19 +66,17 @@ def _ibex_app_to_schema(app: ApplicationsResponse) -> PlanningApplication:
 
         fa = app.proposed_floor_area
         proposed_floor_area = ProposedFloorArea(
-            gross_sqm=fa.proposed_gross_floor_area_sqm or 0.0,
-            net_sqm=fa.gross_internal_area_to_add_sqm or 0.0,
-            use_class="",
+            gross_internal_area_to_add_sqm=fa.gross_internal_area_to_add_sqm or 0.0,
+            proposed_gross_floor_area_sqm=fa.proposed_gross_floor_area_sqm or 0.0,
         )
 
     return PlanningApplication(
-        application_id=app.planning_reference,
-        council_id=str(app.council_id),
+        council_id=app.council_id,
         council_name=app.council_name,
         planning_reference=app.planning_reference,
-        description=app.proposal,
-        address=app.raw_address,
-        application_type=app.raw_application_type,
+        proposal=app.proposal,
+        raw_address=app.raw_address,
+        raw_application_type=app.raw_application_type,
         normalised_application_type=(
             app.normalised_application_type.value
             if app.normalised_application_type
@@ -93,10 +91,10 @@ def _ibex_app_to_schema(app: ApplicationsResponse) -> PlanningApplication:
             if app.normalised_decision
             else None
         ),
-        decision=app.raw_decision,
-        date_received=app.application_date,
-        decision_date=app.decided_date,
-        proposed_units=proposed_units,
+        raw_decision=app.raw_decision,
+        application_date=app.application_date,
+        decided_date=app.decided_date,
+        proposed_unit_mix=proposed_units,
         proposed_floor_area=proposed_floor_area,
         num_new_houses=app.num_new_houses,
     )
@@ -210,17 +208,24 @@ class PlanningAPIClient:
 
     async def search_all_pages(
         self,
-        council_id: str,
+        council_id: Union[int, str],
         *,
-        page_size: int = 100,
+        page_size: int = 1000,
+        max_pages: int = 10,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
         date_range_type: str = "determined",
         extensions: object = None,
         filters: object = None,
     ) -> list[PlanningApplication]:
-        """Fetch all applications for a council via the Ibex /applications
-        endpoint, converting results to planning-oracle schema models."""
+        """Fetch applications for a council via the Ibex /applications
+        endpoint, converting results to planning-oracle schema models.
+
+        Paginates up to *max_pages* pages of *page_size* results each
+        (default: 10 pages x 1000 = 10,000 applications max).
+        """
+
+        council_id_str = str(council_id)
 
         ibex_extensions = None
         if extensions is not None:
@@ -233,25 +238,46 @@ class PlanningAPIClient:
         if filters is not None:
             ibex_filters = {}
 
-        # IbexClient.applications needs date_from/date_to as required args.
-        # Use sensible defaults if not provided.
         d_from = date_from or "2015-01-01"
         d_to = date_to or "2030-12-31"
 
-        ibex_responses = await self._ibex.applications(
-            date_from=d_from,
-            date_to=d_to,
-            council_ids=[int(council_id)] if council_id.isdigit() else None,
-            date_range_type=date_range_type if date_range_type != "determined" else "any",
-            extensions=ibex_extensions,
-            filters=ibex_filters,
-        )
+        payload: dict = {
+            "input": {
+                "date_from": d_from,
+                "date_to": d_to,
+                "date_range_type": date_range_type if date_range_type != "determined" else "any",
+            }
+        }
+        if council_id_str.isdigit():
+            payload["input"]["council_id"] = [int(council_id_str)]
+        if ibex_extensions:
+            payload["extensions"] = ibex_extensions
+        if ibex_filters:
+            payload["filters"] = ibex_filters
 
-        applications = [_ibex_app_to_schema(r) for r in ibex_responses]
+        from hashbrowns.ibex.models import ApplicationsResponse as IbexAppResponse
+
+        all_responses: list[IbexAppResponse] = []
+        for page in range(1, max_pages + 1):
+            payload["input"]["page"] = page
+            payload["input"]["page_size"] = page_size
+
+            response = await self._ibex._post("/applications", payload)
+            batch = [IbexAppResponse.model_validate(item) for item in response.json()]
+            all_responses.extend(batch)
+
+            logger.info(
+                "  page %d/%d: %d results", page, max_pages, len(batch),
+            )
+            if len(batch) < page_size:
+                break
+
+        applications = [_ibex_app_to_schema(r) for r in all_responses]
         logger.info(
-            "search_all_pages: fetched %d applications for council %s",
+            "search_all_pages: fetched %d applications for council %s (%d pages)",
             len(applications),
             council_id,
+            page,
         )
         return applications
 
@@ -259,7 +285,7 @@ class PlanningAPIClient:
 
     async def search_applications(
         self,
-        council_id: str,
+        council_id: Union[int, str],
         *,
         page: int = 1,
         page_size: int = 100,
@@ -284,7 +310,7 @@ class PlanningAPIClient:
 
     async def get_council_stats(
         self,
-        council_id: str,
+        council_id: Union[int, str],
         *,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
@@ -294,7 +320,8 @@ class PlanningAPIClient:
         d_from = date_from or "2015-01-01"
         d_to = date_to or "2030-12-31"
 
-        council_id_int = int(council_id) if council_id.isdigit() else 0
+        council_id_str = str(council_id)
+        council_id_int = int(council_id_str) if council_id_str.isdigit() else 0
 
         stats = await self._ibex.stats(
             council_id=council_id_int,
@@ -302,8 +329,8 @@ class PlanningAPIClient:
             date_to=d_to,
         )
 
-        result = _ibex_stats_to_schema(stats, council_id)
-        logger.info("get_council_stats: fetched stats for council %s", council_id)
+        result = _ibex_stats_to_schema(stats, council_id_str)
+        logger.info("get_council_stats: fetched stats for council %s", council_id_str)
         return result
 
     # ── lookup_applications (kept for compatibility) ──────────────────
