@@ -21,10 +21,12 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from data.api_client import PlanningAPIClient
+from data.external import load_external_data
 from data.schema import CouncilStats, PlanningApplication
 from features.application import (
     ApplicationFeatureExtractor,
     _CATEGORICAL_COLS,
+    _DEFAULT_MISSINGNESS_FEATURES,
     _LOG_COLS,
     _UNIT_COLS,
 )
@@ -36,15 +38,21 @@ logger = logging.getLogger(__name__)
 # ── Constants ────────────────────────────────────────────────────────────────
 
 # Columns pulled from the council merge output to form the council branch.
+# Count features (total_applications, new_homes_approved) use log1p to
+# prevent large raw counts (~50k) from dominating the council branch.
+# Per-project-type rate features have Empirical Bayes shrinkage applied
+# by CouncilFeatureExtractor.merge_to_applications.
 _COUNCIL_FEATURE_COLS: list[str] = [
     "overall_approval_rate",
     "activity_level_encoded",
-    "total_applications_per_year",
     "log_total_applications",
     "residential_proportion",
-    "new_homes_approved_per_year",
+    "log_new_homes_approved",
     "approval_rate_by_matching_project_type",
     "avg_decision_time_by_matching_project_type",
+    "log_sample_count_by_project_type",
+    "hdt_measurement",
+    "has_green_belt",
 ]
 
 _INDEX_COLS = frozenset({"council_id", "planning_reference"})
@@ -187,6 +195,44 @@ def temporal_split(
 # ── End-to-end dataset construction ──────────────────────────────────────────
 
 
+def _save_council_project_type_counts(
+    council_feat_df: pl.DataFrame,
+    council_extractor: CouncilFeatureExtractor,
+    checkpoint_dir: Path,
+) -> None:
+    """Persist per-(council_id, project_type) sample counts and global rates.
+
+    Saves a JSON artefact alongside the other training checkpoints so the
+    inference pipeline can audit the exact counts the model was trained
+    with.  The file is informational — the inference code derives counts
+    at runtime via ``CouncilFeatureExtractor._count_for_project_type``.
+    """
+    from features.council import CouncilFeatureExtractor as _CFE
+
+    counts: dict[str, dict[str, float]] = {}
+    for row in council_feat_df.to_dicts():
+        cid = str(row.get("council_id", ""))
+        if not cid:
+            continue
+        cid_counts: dict[str, float] = {}
+        for pt in council_extractor._known_project_types:
+            col = f"n_apps_{_CFE._safe_name(pt)}"
+            cid_counts[pt] = float(row.get(col, 0.0) or 0.0)
+        counts[cid] = cid_counts
+
+    payload = {
+        "counts": counts,
+        "global_approval_rate": council_extractor._global_approval_rate,
+        "global_decision_times": council_extractor._global_decision_times,
+        "known_project_types": council_extractor._known_project_types,
+        "shrinkage_k": council_extractor._shrinkage_k,
+    }
+
+    out_path = checkpoint_dir / "council_project_type_counts.json"
+    out_path.write_text(json.dumps(payload, indent=2))
+    logger.info("Saved council project-type counts to %s", out_path)
+
+
 async def build_datasets(
     client: PlanningAPIClient,
     text_embedder: TextEmbedder,
@@ -228,6 +274,7 @@ async def build_datasets(
     """
 
     # ── 1. Fetch from API ─────────────────────────────────────────────
+    council_ids = list(dict.fromkeys(council_ids))  # deduplicate, preserve order
     logger.info("Fetching applications for %d councils …", len(council_ids))
     all_apps: list[PlanningApplication] = []
     for cid in council_ids:
@@ -254,10 +301,21 @@ async def build_datasets(
         if stats.council_name and stats.region is None:
             stats.region = COUNCIL_REGION.get(stats.council_name)
 
+    # Enrich council stats with external data (HDT + green belt).
+    external_data = load_external_data()
+    for stats in all_stats:
+        if stats.council_id is not None and stats.council_id in external_data:
+            ext = external_data[stats.council_id]
+            if ext.hdt_measurement is not None:
+                stats.hdt_measurement = ext.hdt_measurement
+            stats.has_green_belt = ext.has_green_belt
+    logger.info("Enriched council stats with external data (HDT + green belt)")
+
     # Save council stats as JSON for inference-time use.
     if checkpoint_dir is not None:
-        stats_path = Path(checkpoint_dir) / "council_stats.json"
-        stats_path.parent.mkdir(parents=True, exist_ok=True)
+        ckpt_path = Path(checkpoint_dir)
+        ckpt_path.mkdir(parents=True, exist_ok=True)
+        stats_path = ckpt_path / "council_stats.json"
         stats_path.write_text(
             json.dumps(
                 [s.model_dump(mode="json") for s in all_stats],
@@ -298,6 +356,14 @@ async def build_datasets(
 
     # ── 4b. Council features (fit on stats, merge to each split) ──────
     council_feat_df = council_extractor.fit_transform(stats_df)
+
+    # Save per-(council_id, project_type) sample counts and global rates
+    # so the inference pipeline can reproduce training-time shrinkage
+    # without re-deriving counts from the raw stats dicts.
+    if checkpoint_dir is not None:
+        _save_council_project_type_counts(
+            council_feat_df, council_extractor, Path(checkpoint_dir),
+        )
 
     def _merge_council(raw_split: pl.DataFrame) -> pl.DataFrame:
         merged = council_extractor.merge_to_applications(
@@ -473,6 +539,9 @@ def get_feature_names(
         "application_month_cos",
         "application_year",
     ])
+    # Missingness indicators (order matches _build_features output).
+    for feat_name in app_extractor._missingness_features:
+        app_names.append(f"missing_{feat_name}")
     for col in _CATEGORICAL_COLS:
         for cat in app_extractor._categories.get(col, []):
             app_names.append(f"{col}_{cat}")

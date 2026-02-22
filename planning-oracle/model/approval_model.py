@@ -50,7 +50,7 @@ class ApprovalModel(nn.Module):
         self,
         text_embed_dim: int = 384,
         num_app_features: int = 20,
-        num_council_features: int = 8,
+        num_council_features: int = 10,
     ) -> None:
         super().__init__()
 
@@ -81,8 +81,8 @@ class ApprovalModel(nn.Module):
         )
 
         # ── council branch ──────────────────────────────────────────────
-        # 8 → 32 → 32  (was 8 → 128 → 128)
-        # Projecting 8 features into 128 dims is the most over-parameterised
+        # 10 → 32 → 32  (was 8 → 128 → 128)
+        # Projecting 10 features into 128 dims is the most over-parameterised
         # part of the original model — pure memorisation of council identity.
         # No BatchNorm here since the input is already small and normalised.
         self.council_branch = nn.Sequential(
@@ -353,7 +353,7 @@ def count_parameters(model: nn.Module) -> int:
 def build_approval_model(
     text_embed_dim: int = 384,
     num_app_features: int = 20,
-    num_council_features: int = 8,
+    num_council_features: int = 10,
     settings: Optional[Settings] = None,
 ) -> ApprovalModel:
     """Construct an :class:`ApprovalModel` with settings-driven defaults.
@@ -390,7 +390,7 @@ def load_model(
     path: str,
     text_embed_dim: int = 384,
     num_app_features: int = 20,
-    num_council_features: int = 8,
+    num_council_features: int = 10,
 ) -> ApprovalModel:
     """Load model weights from disk.
 
