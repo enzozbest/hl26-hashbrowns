@@ -235,7 +235,7 @@ class CouncilRanker:
         results.sort(
             key=lambda r: r["approval_probability"], reverse=True,
         )
-        results = results[:top_k]
+        results = results #[:top_k]
 
         logger.info(
             "Ranked %d/%d councils for '%s': "
