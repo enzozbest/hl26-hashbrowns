@@ -27,14 +27,14 @@ from neural_network.data.schema import (
 # Import IbexClient from the sibling python package
 # ---------------------------------------------------------------------------
 
-_PYTHON_PKG_DIR = str(Path(__file__).resolve().parents[2] / "python")
+_PYTHON_PKG_DIR = str(Path(__file__).resolve().parents[2])
 if _PYTHON_PKG_DIR not in sys.path:
     sys.path.insert(0, _PYTHON_PKG_DIR)
 
 # The python/data/ dir is added separately so we can import ibex_data.*
 # without conflicting with the planning-oracle's own `data` package (which
 # is already cached in sys.modules).
-_PYTHON_DATA_DIR = str(Path(__file__).resolve().parents[2] / "python" / "data")
+_PYTHON_DATA_DIR = str(Path(__file__).resolve().parents[2] / "data")
 if _PYTHON_DATA_DIR not in sys.path:
     sys.path.insert(0, _PYTHON_DATA_DIR)
 
@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 # SQLite cache location
 # ---------------------------------------------------------------------------
 
-_IBEX_DB_PATH = Path(__file__).resolve().parents[2] / "python" / "data" / "ibex_data" / "ibex.db"
+_IBEX_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "ibex_data" / "ibex.db"
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +77,7 @@ def _ibex_app_to_schema(app: ApplicationsResponse) -> PlanningApplication:
     # Map proposed_unit_mix fields
     proposed_units = None
     if app.proposed_unit_mix is not None:
-        from data.schema import ProposedUnitMix
+        from neural_network.data.schema import ProposedUnitMix
 
         mix = app.proposed_unit_mix
         proposed_units = ProposedUnitMix(
@@ -91,7 +91,7 @@ def _ibex_app_to_schema(app: ApplicationsResponse) -> PlanningApplication:
     # Map proposed_floor_area fields
     proposed_floor_area = None
     if app.proposed_floor_area is not None:
-        from data.schema import ProposedFloorArea
+        from neural_network.data.schema import ProposedFloorArea
 
         fa = app.proposed_floor_area
         proposed_floor_area = ProposedFloorArea(

@@ -133,7 +133,7 @@ def _load_pipeline(settings: Optional[Settings] = None) -> InferencePipeline:
         try:
             import sqlite3
 
-            db_path = Path(__file__).resolve().parents[2] / "python" / "data" / "ibex_data" / "ibex.db"
+            db_path = Path(__file__).resolve().parents[2] / "data" / "ibex_data" / "ibex.db"
             if db_path.exists():
                 conn = sqlite3.connect(db_path)
                 rows = conn.execute(

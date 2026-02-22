@@ -15,7 +15,7 @@ from pathlib import Path
 # import that occurs when ``from data.regions import ...`` resolves to
 # this file (planning-oracle/data/regions.py) instead of the canonical
 # python/data/regions.py.
-_CANONICAL = Path(__file__).resolve().parents[2] / "python" / "data" / "regions.py"
+_CANONICAL = Path(__file__).resolve().parents[2] / "data" / "regions.py"
 _spec = importlib.util.spec_from_file_location("_canonical_regions", _CANONICAL)
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
