@@ -33,7 +33,7 @@ REGIONS: dict[str, list[str]] = {
         'Bath and North East Somerset', 'Bristol, City of', 'Cornwall', 'North Somerset',
         'Plymouth', 'South Gloucestershire', 'Swindon', 'Torbay', 'Wiltshire',
         'Bournemouth', 'Christchurch', 'Poole',
-        'East Dorset', 'North Dorset', 'Purbeck', 'West Dorset', 'Weymouth and Portland',
+        'Dorset', 'Weymouth and Portland',
         'East Devon', 'Exeter', 'Mid Devon', 'North Devon', 'South Hams',
         'Teignbridge', 'Torridge', 'West Devon',
         'Cheltenham', 'Cotswold', 'Forest of Dean', 'Gloucester', 'Stroud', 'Tewkesbury',
@@ -96,6 +96,11 @@ REGIONS: dict[str, list[str]] = {
         'County Durham', 'Darlington', 'Hartlepool', 'Middlesbrough',
         'Northumberland', 'Redcar and Cleveland', 'Stockton-on-Tees',
     ],
+}
+
+MERGE_REGIONS: dict[str, list[str]] = {
+    'Dorset': ['East Dorset', 'North Dorset', 'Purbeck', 'West Dorset'],
+    'Chiltern and South Bucks': ['Chiltern', 'South Bucks'],
 }
 
 # Canonical region ordering (same as in the TS file)
