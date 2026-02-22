@@ -21,6 +21,7 @@ export default function Home() {
     const [addedCouncils,   setAddedCouncils]   = useState<string[]>([])
     const [removedCouncils, setRemovedCouncils] = useState<string[]>([])
     const [councilData,     setCouncilData]     = useState<CouncilInfo[]>([])
+    const [specify,         setSpecify]         = useState('')
     const [loading,         setLoading]         = useState(false)
     const [error,           setError]           = useState<string | null>(null)
     const navigate = useNavigate()
@@ -73,14 +74,19 @@ export default function Home() {
         setLoading(true)
         setError(null)
 
-        const parts: string[] = [
-            devType!,
-            scale!,
-            `regions: ${regions.join(', ')}`,
+        const queryParts: string[] = [
+            `To build a ${devType} development at a ${scale} scale in regions ${regions.join(', ')}`,
         ]
-        if (addedCouncils.length > 0)   parts.push(`also include: ${addedCouncils.join(', ')}`)
-        if (removedCouncils.length > 0)  parts.push(`exclude: ${removedCouncils.join(', ')}`)
-        const query = parts.join(', ')
+        if (addedCouncils.length > 0) {
+            queryParts.push(`including ${addedCouncils.join(', ')}`)
+        }
+        if (removedCouncils.length > 0) {
+            queryParts.push(`excluding ${removedCouncils.join(', ')}`)
+        }
+        if (specify.trim().length > 0) {
+            queryParts.push(`and ${specify.trim()}`)
+        }
+        const query = `${queryParts.join(', ')}.`
         try {
             // Compute effective council IDs: (region councils − removed) ∪ added
             const regionCouncilIds = councilData
@@ -317,6 +323,8 @@ export default function Home() {
                                     color:      C.text,
                                     transition: 'border-color 0.15s',
                                 }}
+                                value={specify}
+                                onChange={(e) => setSpecify(e.target.value)}
                                 onFocus={(e) => e.currentTarget.style.borderColor = C.borderFocus}
                                 onBlur={(e)  => e.currentTarget.style.borderColor = C.border}
                             />
