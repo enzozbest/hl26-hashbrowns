@@ -252,10 +252,10 @@ class CouncilStats(BaseModel):
         None, description="Name of the local planning authority"
     )
     approval_rate: Optional[float] = Field(
-        None, description="Historical approval rate (0-100 percentage)"
+        None, description="Historical approval rate (0-1 scale, e.g. 0.85 = 85%)"
     )
     refusal_rate: Optional[float] = Field(
-        None, description="Historical refusal rate (0-100 percentage)"
+        None, description="Historical refusal rate (0-1 scale, e.g. 0.12 = 12%)"
     )
     average_decision_time: Optional[dict[str, float]] = Field(
         None,
@@ -282,6 +282,14 @@ class CouncilStats(BaseModel):
     region: Optional[str] = Field(
         None,
         description="Canonical UK region name (e.g. 'London', 'South East'), injected by client",
+    )
+
+    # ── External enrichment (injected from data/external.py) ──────────
+    hdt_measurement: Optional[float] = Field(
+        None, description="Housing Delivery Test score (0-3 scale, e.g. 0.94 = 94%)"
+    )
+    has_green_belt: Optional[bool] = Field(
+        None, description="Whether council has green belt land"
     )
 
 

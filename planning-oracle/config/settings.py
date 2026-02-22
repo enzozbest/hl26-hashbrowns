@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     ibex_max_concurrency: int = 10
 
     # Model hyperparameters
-    learning_rate: float = 0.001
+    learning_rate: float = 3e-5
     batch_size: int = 64
     epochs: int = 50
     embedding_dim: int = 384
