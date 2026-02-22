@@ -1,150 +1,109 @@
-import {useState, useRef, useEffect} from 'react'
+import {useState, useEffect, useMemo} from 'react'
 import MapBackground from '../components/MapBackground'
-import {submitQuery} from "../api/client.ts";
+import FormCard from '../components/FormCard'
+import {submitAnalyse, fetchCouncils, type CouncilInfo} from "../api/client.ts";
 import {useNavigate} from 'react-router-dom'
-import {REGION_NAMES} from '../data/regions'
-
-// ── Palette ─────────────────────────────────────────────────────────────────
-const C = {
-    overlay: 'rgba(10, 7, 4, 0.78)',
-    card: 'rgba(14, 10, 6, 0.87)',
-    cardAlt: 'rgba(20, 14, 8, 0.75)',
-    text: '#ede8df',
-    textMuted: 'rgba(237, 232, 223, 0.65)',
-    textFaint: 'rgba(237, 232, 223, 0.50)',
-    accent: '#c8962a',
-    accentDim: 'rgba(200, 150, 42, 0.45)',
-    accentFaint: 'rgba(200, 150, 42, 0.2)',
-    accentBtn: '#a97820',
-    accentHover: '#bf8c24',
-    border: 'rgba(200, 150, 42, 0.22)',
-    borderFocus: 'rgba(200, 150, 42, 0.58)',
-    inputBg: 'rgba(255, 255, 255, 0.03)',
-}
-
+import {REGION_ORDER} from '../data/regions'
+import RegionsDropdown from '../components/inputs/RegionsDropdown'
+import CouncilSearchDropdown from '../components/inputs/CouncilSearchDropdown'
+import CouncilTag from '../components/inputs/CouncilTag'
+import {C, tileSel, tileUnsel} from '../components/theme'
 
 const DEV_TYPES = ['Residential', 'Commercial', 'Mixed Use', 'Extension / Conversion', 'Industrial', 'Educational']
 const SCALES    = ['Small (1–10 units)', 'Medium (11–50 units)', 'Large (50+ units)']
 
-// Shared tile style helpers — keep all colours from palette
-const tileSel   = { background: 'rgba(200, 150, 42, 0.15)', border: `1px solid ${C.accent}`,   color: C.accent  }
-const tileUnsel = { background: 'rgba(255,255,255,0.03)',    border: `1px solid ${C.border}`,   color: C.textMuted }
 
-function RegionDropdown({ value, onChange }: {
-    value:    string | null
-    onChange: (v: string | null) => void
-}) {
-    const [open, setOpen] = useState(false)
-    const ref = useRef<HTMLDivElement>(null)
-
-    useEffect(() => {
-        if (!open) return
-        function onOutsideClick(e: MouseEvent) {
-            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-        }
-        document.addEventListener('mousedown', onOutsideClick)
-        return () => document.removeEventListener('mousedown', onOutsideClick)
-    }, [open])
-
-    return (
-        <div ref={ref} style={{position: 'relative'}}>
-
-            {/* Trigger button */}
-            <button
-                type="button"
-                onClick={() => setOpen(o => !o)}
-                style={{
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    fontFamily: 'Inter, sans-serif',
-                    fontSize: '0.8rem',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                    ...(value ? tileSel : tileUnsel),
-                    ...(open && {borderColor: C.borderFocus}),
-                }}
-            >
-                <span style={{color: value ? C.accent : C.textMuted}}>
-                    {value ?? 'Select a region…'}
-                </span>
-                <svg width="11" height="11" viewBox="0 0 12 12" fill="none"
-                     style={{flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.18s'}}>
-                    <path d="M2 4L6 8L10 4"
-                          stroke={value ? C.accent : C.textFaint}
-                          strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-            </button>
-
-            {/* Option list */}
-            {open && (
-                <div style={{
-                    position:       'absolute',
-                    top:            'calc(100% + 3px)',
-                    left:           0,
-                    right:          0,
-                    zIndex:         50,
-                    background:     'rgba(12, 8, 4, 0.98)',
-                    border:         `1px solid ${C.border}`,
-                    backdropFilter: 'blur(12px)',
-                    maxHeight:      '260px',
-                    overflowY:      'auto',
-                }}>
-                    {REGION_NAMES.map((r) => {
-                        const isSelected = value === r
-                        return (
-                            <button
-                                key={r}
-                                type="button"
-                                onClick={() => { onChange(r); setOpen(false) }}
-                                style={{
-                                    display:     'block',
-                                    width:       '100%',
-                                    textAlign:   'left',
-                                    padding:     '8px 12px',
-                                    fontFamily:  'Inter, sans-serif',
-                                    fontSize:    '0.8rem',
-                                    fontWeight:  isSelected ? 600 : 400,
-                                    color:       isSelected ? C.accent : C.textMuted,
-                                    background:  isSelected ? 'rgba(200,150,42,0.12)' : 'transparent',
-                                    border:      'none',
-                                    borderLeft:  `2px solid ${isSelected ? C.accent : 'transparent'}`,
-                                    cursor:      'pointer',
-                                    transition:  'background 0.12s',
-                                }}
-                                onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(200,150,42,0.06)' }}
-                                onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
-                            >
-                                {r}
-                            </button>
-                        )
-                    })}
-                </div>
-            )}
-        </div>
-    )
-}
-
+// ── Home page ────────────────────────────────────────────────────────────────
 export default function Home() {
-    const [devType,  setDevType]  = useState<string | null>(null)
-    const [region,   setRegion]   = useState<string | null>(null)
-    const [scale,    setScale]    = useState<string | null>(null)
+    const [devType,         setDevType]         = useState<string | null>(null)
+    const [regions,         setRegions]         = useState<string[]>([])
+    const [scale,           setScale]           = useState<string | null>(null)
+    const [addedCouncils,   setAddedCouncils]   = useState<string[]>([])
+    const [removedCouncils, setRemovedCouncils] = useState<string[]>([])
+    const [councilData,     setCouncilData]     = useState<CouncilInfo[]>([])
+    const [loading,         setLoading]         = useState(false)
+    const [error,           setError]           = useState<string | null>(null)
     const navigate = useNavigate()
 
-    const allSelected = !!(devType && region && scale)
+    // Fetch council list from backend on mount
+    useEffect(() => {
+        fetchCouncils().then(setCouncilData).catch(console.error)
+    }, [])
+
+    // Derive region → [lad_name] mapping from API data
+    const regionsMap = useMemo<Record<string, string[]>>(() => {
+        const map: Record<string, string[]> = {}
+        for (const c of councilData) {
+            if (!c.region) continue
+            ;(map[c.region] ??= []).push(c.lad_name)
+        }
+        return map
+    }, [councilData])
+
+    // Sorted list of region names (by canonical order)
+    const regionNames = useMemo(
+        () => REGION_ORDER.filter(r => r in regionsMap),
+        [regionsMap]
+    )
+
+    const allSelected = !!(devType && regions.length > 0 && scale)
+
+    // When regions change, prune council adjustments that are now invalid
+    useEffect(() => {
+        const rc = new Set(regions.flatMap(r => regionsMap[r] ?? []))
+        setAddedCouncils(prev  => prev.filter(c => !rc.has(c)))
+        setRemovedCouncils(prev => prev.filter(c =>  rc.has(c)))
+    }, [regions, regionsMap])
+
+    // Derived: all councils belonging to selected regions (deduped)
+    const regionCouncils = [...new Set(regions.flatMap(r => regionsMap[r] ?? []))]
+
+    // Councils available to add (not in any selected region, not already added)
+    const addableCouncils = [...new Set(
+        Object.values(regionsMap).flat().filter(c => !regionCouncils.includes(c) && !addedCouncils.includes(c))
+    )].sort()
+
+    // Councils available to exclude (in selected regions, not already excluded)
+    const excludableCouncils = regionCouncils.filter(c => !removedCouncils.includes(c)).sort()
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
         if (!allSelected) return
-        const query = `${devType}, ${scale}, region: ${region}`
+
+        setLoading(true)
+        setError(null)
+
+        const parts: string[] = [
+            devType!,
+            scale!,
+            `regions: ${regions.join(', ')}`,
+        ]
+        if (addedCouncils.length > 0)   parts.push(`also include: ${addedCouncils.join(', ')}`)
+        if (removedCouncils.length > 0)  parts.push(`exclude: ${removedCouncils.join(', ')}`)
+        const query = parts.join(', ')
         try {
-            const data = await submitQuery(query)
-            navigate('/map', {state: {query, result: data, region}})
+            // Compute effective council IDs: (region councils − removed) ∪ added
+            const regionCouncilIds = councilData
+                .filter(c => c.region && regions.includes(c.region))
+                .map(c => c.council_id)
+            const addedIds = councilData
+                .filter(c => addedCouncils.includes(c.lad_name))
+                .map(c => c.council_id)
+            const removedIds = new Set(
+                councilData.filter(c => removedCouncils.includes(c.lad_name)).map(c => c.council_id)
+            )
+            const effectiveIds = [
+                ...regionCouncilIds.filter(id => !removedIds.has(id)),
+                ...addedIds,
+            ]
+            const data = await submitAnalyse(effectiveIds, query)
+            navigate('/map', {state: {query, analyseResults: data.scores, regions, addedCouncils, removedCouncils}})
         } catch (err) {
-            console.log("Error: ", err)
+            const errorMessage = err instanceof Error ? err.message : 'Failed to submit analysis'
+            setError(errorMessage)
+            console.error("Error: ", err)
+        } finally {
+            setLoading(false)
         }
     }
 
@@ -164,22 +123,20 @@ export default function Home() {
                 <div className="flex-1 flex items-center px-16 py-16">
                     <div className="max-w-lg">
 
-                        {/* Annotation rule */}
                         <div className="flex items-center gap-3 mb-8">
                             <div className="h-px w-8" style={{background: C.accentDim}}/>
                             <span style={{fontFamily: 'Inter, sans-serif', letterSpacing: '0.26em', color: C.accentDim}}
                                   className="text-[10px] font-medium uppercase">
-                Council Intelligence Platform
-              </span>
+                                Council Intelligence Platform
+                            </span>
                         </div>
 
-                        {/* Main heading */}
                         <h1 className="leading-[1.04] uppercase" style={{
-                            fontFamily: '"Barlow Condensed", sans-serif',
-                            fontWeight: 600,
-                            fontSize: 'clamp(2.8rem, 4.5vw, 4.8rem)',
+                            fontFamily:    '"Barlow Condensed", sans-serif',
+                            fontWeight:    600,
+                            fontSize:      'clamp(2.8rem, 4.5vw, 4.8rem)',
                             letterSpacing: '-0.01em',
-                            color: C.text,
+                            color:         C.text,
                         }}>
                             Know before<br/>you build
                         </h1>
@@ -191,52 +148,28 @@ export default function Home() {
                             site.
                         </p>
 
-                        {/* Capability tags */}
                         <div className="mt-9 flex flex-wrap gap-2">
                             {['Council ranking', 'Approval rates', 'Constraint mapping', 'Decision timelines'].map((tag) => (
                                 <span key={tag} className="px-3 py-1.5 text-[10.5px] font-medium uppercase"
                                       style={{
-                                          fontFamily: 'Inter, sans-serif',
+                                          fontFamily:    'Inter, sans-serif',
                                           letterSpacing: '0.12em',
-                                          border: `1px solid ${C.accentFaint}`,
-                                          color: C.textMuted,
+                                          border:        `1px solid ${C.accentFaint}`,
+                                          color:         C.textMuted,
                                       }}>
-                  {tag}
-                </span>
+                                    {tag}
+                                </span>
                             ))}
                         </div>
 
                     </div>
                 </div>
 
-                {/* ── Right: form + history ── */}
+                {/* ── Right: form ── */}
                 <div className="w-[55%] flex flex-col justify-center px-12 py-10 gap-5 overflow-y-auto">
 
-                    {/* Form card */}
-                    <div className="relative p-7" style={{
-                        background: C.card,
-                        border: `1px solid ${C.border}`,
-                        backdropFilter: 'blur(12px)',
-                    }}>
-                        {/* Corner brackets */}
-                        {[
-                            'top-0 left-0 border-t border-l',
-                            'top-0 right-0 border-t border-r',
-                            'bottom-0 left-0 border-b border-l',
-                            'bottom-0 right-0 border-b border-r',
-                        ].map((cls, i) => (
-                            <span key={i} className={`absolute w-3.5 h-3.5 ${cls}`}
-                                  style={{borderColor: C.accentDim}}/>
-                        ))}
-
-                        <p className="text-[10px] font-medium uppercase mb-1"
-                           style={{fontFamily: 'Inter, sans-serif', letterSpacing: '0.24em', color: C.textFaint}}>
-                            Proposal Input
-                        </p>
-                        <h2 className="text-[1.05rem] font-semibold mb-5"
-                            style={{fontFamily: 'Inter, sans-serif', color: C.text}}>
-                            Define your development parameters
-                        </h2>
+                    <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
+                        <FormCard title="Proposal Input" subtitle="Define your development parameters">
 
                         {/* ── Step 1: Development Type ── */}
                         <p className="text-[10px] font-medium uppercase mb-2"
@@ -266,9 +199,81 @@ export default function Home() {
                            style={{fontFamily: 'Inter, sans-serif', letterSpacing: '0.22em', color: C.textFaint}}>
                             02 — Region
                         </p>
-                        <div className="mb-5">
-                            <RegionDropdown value={region} onChange={setRegion} />
+                        <div className={regions.length > 0 ? 'mb-3' : 'mb-5'}>
+                            <RegionsDropdown values={regions} onChange={setRegions} regionNames={regionNames}/>
                         </div>
+
+                        {/* Council adjustments — visible once at least one region is selected */}
+                        {regions.length > 0 && (
+                            <div className="mb-5" style={{
+                                background: 'rgba(255,255,255,0.018)',
+                                border:     `1px solid ${C.border}`,
+                                padding:    '10px 12px',
+                            }}>
+
+                                {/* Add councils from other regions */}
+                                <p style={{
+                                    fontFamily:    'Inter, sans-serif',
+                                    fontSize:      '0.7rem',
+                                    fontWeight:    500,
+                                    letterSpacing: '0.18em',
+                                    textTransform: 'uppercase',
+                                    color:         C.textFaint,
+                                    marginBottom:  6,
+                                }}>
+                                    Also include
+                                </p>
+                                <CouncilSearchDropdown
+                                    placeholder="Add councils from other regions…"
+                                    options={addableCouncils}
+                                    onSelect={(c) => setAddedCouncils(prev => [...prev, c])}
+                                />
+                                {addedCouncils.length > 0 && (
+                                    <div style={{display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6}}>
+                                        {addedCouncils.map(c => (
+                                            <CouncilTag
+                                                key={c}
+                                                label={c}
+                                                variant="add"
+                                                onRemove={() => setAddedCouncils(prev => prev.filter(x => x !== c))}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div style={{height: 1, background: C.border, margin: '10px 0'}}/>
+
+                                {/* Exclude councils from selected regions */}
+                                <p style={{
+                                    fontFamily:    'Inter, sans-serif',
+                                    fontSize:      '0.7rem',
+                                    fontWeight:    500,
+                                    letterSpacing: '0.18em',
+                                    textTransform: 'uppercase',
+                                    color:         C.textFaint,
+                                    marginBottom:  6,
+                                }}>
+                                    Exclude
+                                </p>
+                                <CouncilSearchDropdown
+                                    placeholder="Remove specific councils from selection…"
+                                    options={excludableCouncils}
+                                    onSelect={(c) => setRemovedCouncils(prev => [...prev, c])}
+                                />
+                                {removedCouncils.length > 0 && (
+                                    <div style={{display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6}}>
+                                        {removedCouncils.map(c => (
+                                            <CouncilTag
+                                                key={c}
+                                                label={c}
+                                                variant="exclude"
+                                                onRemove={() => setRemovedCouncils(prev => prev.filter(x => x !== c))}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* ── Step 3: Scale ── */}
                         <p className="text-[10px] font-medium uppercase mb-2"
@@ -293,24 +298,66 @@ export default function Home() {
                             ))}
                         </div>
 
+                        {/* ── Step 4: Specify (Optional) ── */}
+                        <p className="text-[10px] font-medium uppercase mb-2"
+                           style={{fontFamily: 'Inter, sans-serif', letterSpacing: '0.22em', color: C.textFaint}}>
+                            04 — Specify (Optional)
+                        </p>
+                        <div className="mb-5">
+                            <input
+                                type="text"
+                                placeholder="Specify more details about the potential development..."
+                                className="w-full py-2 px-3 text-[0.8rem]"
+                                style={{
+                                    fontFamily: 'Inter, sans-serif',
+                                    background: C.inputBg,
+                                    borderWidth: '1px',
+                                    borderStyle: 'solid',
+                                    borderColor: C.border,
+                                    color:      C.text,
+                                    transition: 'border-color 0.15s',
+                                }}
+                                onFocus={(e) => e.currentTarget.style.borderColor = C.borderFocus}
+                                onBlur={(e)  => e.currentTarget.style.borderColor = C.border}
+                            />
+                        </div>
+
+                        {/* ── Error message ── */}
+                        {error && (
+                            <div style={{
+                                padding: '8px 12px',
+                                marginBottom: 12,
+                                background: 'rgba(184, 92, 56, 0.15)',
+                                border: '1px solid rgba(184, 92, 56, 0.45)',
+                                color: '#b85c38',
+                                fontSize: '0.8rem',
+                                fontFamily: 'Inter, sans-serif',
+                                borderRadius: '2px',
+                            }}>
+                                {error}
+                            </div>
+                        )}
+
                         {/* ── Submit ── */}
                         <button
-                            onClick={handleSubmit}
-                            disabled={!allSelected}
+                            type="submit"
+                            disabled={!allSelected || loading}
                             className="w-full py-3.5 text-[0.875rem] font-medium cursor-pointer disabled:cursor-default"
                             style={{
-                                fontFamily: 'Inter, sans-serif',
+                                fontFamily:    'Inter, sans-serif',
                                 letterSpacing: '0.06em',
-                                background: allSelected ? C.accentBtn : C.accentFaint,
-                                color: C.text,
-                                transition: 'background 0.2s',
+                                background:    (allSelected && !loading) ? C.accentBtn : C.accentFaint,
+                                color:         C.text,
+                                transition:    'background 0.2s',
+                                opacity:       loading ? 0.6 : 1,
                             }}
-                            onMouseEnter={(e) => { if (allSelected) e.currentTarget.style.background = C.accentHover }}
-                            onMouseLeave={(e) => { if (allSelected) e.currentTarget.style.background = C.accentBtn }}
+                            onMouseEnter={(e) => { if (allSelected && !loading) e.currentTarget.style.background = C.accentHover }}
+                            onMouseLeave={(e) => { if (allSelected && !loading) e.currentTarget.style.background = C.accentBtn  }}
                         >
-                            Analyse Proposal
+                            {loading ? 'Analysing…' : 'Analyse Proposal'}
                         </button>
-                    </div>
+                    </FormCard>
+                    </form>
 
                 </div>
             </div>

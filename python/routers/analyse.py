@@ -17,24 +17,30 @@ REPORTS_DIR = Path(__file__).resolve().parent.parent / "reports"
 
 
 class AnalyseRequest(BaseModel):
-    ids: list[int]
+    council_ids: list[int]
     prompt: str
 
 
 @router.post("")
 def analyse(body: AnalyseRequest, background_tasks: BackgroundTasks):
-    if not body.ids:
+    if not body.council_ids:
         raise HTTPException(status_code=422, detail="ids must not be empty")
 
     analysis_id = str(uuid.uuid4())
     output_dir = REPORTS_DIR / analysis_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    scores = {id_: round(random.uniform(0, 100), 1) for id_ in body.ids}
+    scores = [
+        {
+            "council_id": id_,
+            "score": round(random.uniform(0, 100), 1)
+        }
+        for id_ in body.council_ids
+    ]
 
     save_analysis(analysis_id, str(output_dir))
 
-    background_tasks.add_task(_generate_reports, body.ids, output_dir)
+    background_tasks.add_task(_generate_reports, body.council_ids, output_dir)
 
     return {
         "analysis_id": analysis_id,

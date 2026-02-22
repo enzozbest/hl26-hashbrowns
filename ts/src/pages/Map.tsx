@@ -1,15 +1,10 @@
 import { useLocation, Navigate } from 'react-router-dom'
 import { MapContainer, GeoJSON, useMap } from 'react-leaflet'
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import L from 'leaflet'
-import type { QueryResponse } from '../api/client'
+import {fetchCouncils, type CouncilInfo, type CouncilResult} from '../api/client'
 import type { Feature, FeatureCollection, Geometry } from 'geojson'
 import type { Layer, PathOptions } from 'leaflet'
-import { REGIONS } from '../data/regions'
-
-// ── Constants ────────────────────────────────────────────────────────────────
-const GEOJSON_URL =
-  'https://raw.githubusercontent.com/martinjc/UK-GeoJSON/master/json/administrative/eng/lad.json'
 
 const LEADERBOARD_W = 292 // px
 
@@ -19,7 +14,7 @@ const MIN_ZOOM = 5
 const MAX_ZOOM = 12
 const MAX_BOUNDS: L.LatLngBoundsExpression = [[49.5, -7], [56, 2.5]]
 
-const REGION_BOUNDS: Record<string, L.LatLngBoundsExpression> = {
+const REGION_BOUNDS: Record<string, [[number, number], [number, number]]> = {
   'London':             [[51.28, -0.51], [51.69,  0.33]],
   'South East':         [[50.60, -1.80], [51.80,  1.50]],
   'South West':         [[49.85, -5.75], [51.75, -1.65]],
@@ -31,10 +26,22 @@ const REGION_BOUNDS: Record<string, L.LatLngBoundsExpression> = {
   'North East':         [[54.40, -2.45], [55.80, -1.00]],
 }
 
+function mergeRegionBounds(names: string[]): L.LatLngBoundsExpression | undefined {
+  const valid = names.map(n => REGION_BOUNDS[n]).filter(Boolean)
+  if (valid.length === 0) return undefined
+  let s = Infinity, w = Infinity, n = -Infinity, e = -Infinity
+  for (const [[lat1, lng1], [lat2, lng2]] of valid) {
+    s = Math.min(s, lat1, lat2)
+    w = Math.min(w, lng1, lng2)
+    n = Math.max(n, lat1, lat2)
+    e = Math.max(e, lng1, lng2)
+  }
+  return [[s, w], [n, e]]
+}
+
 // ── Earthy palette ───────────────────────────────────────────────────────────
 const MAP_BG        = '#1e1b17'
 const NO_DATA_FILL  = '#2e2820'
-const BORDER_COLOR  = 'rgba(200, 150, 42, 0.25)'
 const GRAD_LOW      = { r: 0x40, g: 0x28, b: 0x0e }  // dark brown  (0% approval)
 const GRAD_HIGH     = { r: 0xc8, g: 0x96, b: 0x2a }  // ochre gold  (100% approval)
 const SEL_FILL      = '#e8c870'                        // lighter gold — distinguishes selection
@@ -62,10 +69,6 @@ function getColor(pct: number): string {
   return `rgb(${r},${g},${b})`
 }
 
-function normalise(name: string): string {
-  return name.toLowerCase().replace(/[^a-z]/g, '')
-}
-
 function riskMeta(pct: number) {
   if (pct >= 70) return { label: 'High approval likelihood',     colour: '#6b8f5e' }
   if (pct >= 40) return { label: 'Moderate approval likelihood', colour: '#c8962a' }
@@ -73,8 +76,14 @@ function riskMeta(pct: number) {
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
-interface MapState       { query: string; result: QueryResponse; region?: string }
-interface SelectedBorough { name: string; pct: number | undefined }
+interface MapState {
+  query:            string
+  analyseResults:   CouncilResult[]
+  regions?:         string[]
+  addedCouncils?:   string[]
+  removedCouncils?: string[]
+}
+interface SelectedBorough { name: string; councilId: number; pct: number | undefined }
 
 // ── BoroughDetail panel ──────────────────────────────────────────────────────
 function BoroughDetail({ name, pct, onClose }: {
@@ -307,7 +316,7 @@ function Leaderboard({ ranked, selected, onSelect, region }: {
 // ── MapPage ──────────────────────────────────────────────────────────────────
 export default function MapPage() {
   const { state } = useLocation() as { state: MapState | null }
-  const [geoData, setGeoData]                   = useState<FeatureCollection | null>(null)
+  const [councils, setCouncils]                 = useState<CouncilInfo[]>([])
   const [loading, setLoading]                   = useState(true)
   const [selected, setSelected]                 = useState<SelectedBorough | null>(null)
   const [selectedLayer, setSelectedLayer]       = useState<L.Layer | null>(null)
@@ -317,11 +326,20 @@ export default function MapPage() {
   const layerMapRef      = useRef(new Map<string, L.Path>())
 
   useEffect(() => {
-    fetch(GEOJSON_URL)
-      .then((r) => r.json())
-      .then((data: FeatureCollection) => { setGeoData(data); setLoading(false) })
+    fetchCouncils()
+      .then(data => { setCouncils(data); setLoading(false) })
       .catch(() => setLoading(false))
   }, [])
+
+  // Build a GeoJSON FeatureCollection from the fetched council data
+  const geoData: FeatureCollection | null = councils.length > 0 ? {
+    type: 'FeatureCollection',
+    features: councils.map(c => ({
+      type:       'Feature' as const,
+      properties: { lad_name: c.lad_name, council_name: c.council_name, council_id: c.council_id, region: c.region },
+      geometry:   c.polygon as Geometry,
+    })),
+  } : null
 
   // Apply selected highlight after state settles (avoids react-leaflet style override)
   useEffect(() => {
@@ -340,29 +358,68 @@ export default function MapPage() {
     setSelectedLayer(null)
   }, [])
 
-  if (!state) return <Navigate to="/" replace />
+  const handleLeaderboardSelect = useCallback((name: string, pct: number) => {
+    if (selectedLayerRef.current && geoJsonRef.current) {
+      geoJsonRef.current.resetStyle(selectedLayerRef.current)
+    }
+    const councilId = councils.find(c => c.lad_name === name)?.council_id ?? -1
+    const layer = layerMapRef.current.get(name)
+    if (layer) {
+      selectedLayerRef.current = layer
+      setSelected({ name, councilId, pct })
+      setSelectedLayer(layer)
+    } else {
+      selectedLayerRef.current = null
+      setSelected({ name, councilId, pct })
+      setSelectedLayer(null)
+    }
+  }, [councils])
 
-  const { boroughs: allBoroughs, region } = { ...state.result, region: state.region }
+  // Memoized state-derived values (works even if state is null)
+  const resultMap = useMemo(() => {
+    if (!state) return new Map<number, CouncilResult>()
+    return new Map<number, CouncilResult>(state.analyseResults.map(r => [r.council_id, r]))
+  }, [state])
 
-  // Filter to selected region when one is set
-  const regionSet = region ? new Set((REGIONS[region] ?? []).map(normalise)) : null
-  const boroughs = regionSet
-    ? Object.fromEntries(Object.entries(allBoroughs).filter(([n]) => regionSet.has(normalise(n))))
-    : allBoroughs
+  const selectedRegions = useMemo(() => state?.regions ?? [], [state])
+  const addedC = useMemo(() => state?.addedCouncils ?? [], [state])
+  const removedC = useMemo(() => state?.removedCouncils ?? [], [state])
 
-  const boroughLookup = new Map<string, number>()
-  for (const [name, pct] of Object.entries(boroughs)) boroughLookup.set(normalise(name), pct)
+  // Build effective council ID set
+  const regionCouncilIds = useMemo(() => new Set(
+    councils.filter(c => c.region && selectedRegions.includes(c.region)).map(c => c.council_id)
+  ), [councils, selectedRegions])
 
-  const ranked = [...Object.entries(boroughs)].sort(([, a], [, b]) => b - a) as [string, number][]
+  const addedIds = useMemo(() => new Set(
+    councils.filter(c => addedC.includes(c.lad_name)).map(c => c.council_id)
+  ), [councils, addedC])
 
-  function getPct(featureName: string): number | undefined {
-    return boroughLookup.get(normalise(featureName))
-  }
+  const removedIds = useMemo(() => new Set(
+    councils.filter(c => removedC.includes(c.lad_name)).map(c => c.council_id)
+  ), [councils, removedC])
 
-  function featureStyle(feature: Feature<Geometry> | undefined): PathOptions {
-    const name     = feature?.properties?.LAD13NM ?? feature?.properties?.name ?? ''
-    const pct      = getPct(name)
-    const inRegion = !regionSet || regionSet.has(normalise(name))
+  const effectiveCouncilIds: Set<number> | null = useMemo(() =>
+    (selectedRegions.length > 0 || addedC.length > 0)
+      ? new Set([...[...regionCouncilIds].filter(id => !removedIds.has(id)), ...addedIds])
+      : null,
+    [selectedRegions, addedC, regionCouncilIds, removedIds, addedIds]
+  )
+
+  const ranked: [string, number][] = useMemo(() =>
+    councils
+      .filter(c => {
+        const inRegion = !effectiveCouncilIds || effectiveCouncilIds.has(c.council_id)
+        return inRegion && resultMap.has(c.council_id)
+      })
+      .map(c => [c.lad_name, resultMap.get(c.council_id)!.score] as [string, number])
+      .sort(([, a], [, b]) => b - a),
+    [councils, effectiveCouncilIds, resultMap]
+  )
+
+  const featureStyle = useCallback((feature: Feature<Geometry> | undefined): PathOptions => {
+    const councilId = feature?.properties?.council_id as number | undefined
+    const pct       = councilId !== undefined ? resultMap.get(councilId)?.score : undefined
+    const inRegion  = !effectiveCouncilIds || (councilId !== undefined && effectiveCouncilIds.has(councilId))
 
     if (!inRegion) {
       return {
@@ -381,17 +438,17 @@ export default function MapPage() {
       color:       'rgba(200, 150, 42, 0.55)',
       fillOpacity: pct !== undefined ? 0.85 : 0.35,
     }
-  }
+  }, [resultMap, effectiveCouncilIds])
 
-  function onEachFeature(feature: Feature<Geometry>, layer: Layer) {
-    const name     = feature.properties?.LAD13NM ?? feature.properties?.name ?? 'Unknown'
-    const pct      = getPct(name)
-    const inRegion = !regionSet || regionSet.has(normalise(name))
+  const onEachFeature = useCallback((feature: Feature<Geometry>, layer: Layer) => {
+    const name      = feature.properties?.lad_name as string ?? 'Unknown'
+    const councilId = feature.properties?.council_id as number
+    const pct       = resultMap.get(councilId)?.score
+    const inRegion  = !effectiveCouncilIds || effectiveCouncilIds.has(councilId)
 
-    layerMapRef.current.set(normalise(name), layer as L.Path)
+    layerMapRef.current.set(name, layer as L.Path)
 
     if (!inRegion) {
-      // Out-of-region: no tooltip, no click, default cursor
       ;(layer as L.Path).options.interactive = false
       return
     }
@@ -409,26 +466,13 @@ export default function MapPage() {
         geoJsonRef.current.resetStyle(selectedLayerRef.current)
       }
       selectedLayerRef.current = layer as L.Path
-      setSelected({ name, pct })
+      setSelected({ name, councilId, pct })
       setSelectedLayer(layer)
     })
-  }
+  }, [effectiveCouncilIds, resultMap])
 
-  const handleLeaderboardSelect = useCallback((name: string, pct: number) => {
-    if (selectedLayerRef.current && geoJsonRef.current) {
-      geoJsonRef.current.resetStyle(selectedLayerRef.current)
-    }
-    const layer = layerMapRef.current.get(normalise(name))
-    if (layer) {
-      selectedLayerRef.current = layer
-      setSelected({ name, pct })
-      setSelectedLayer(layer)
-    } else {
-      selectedLayerRef.current = null
-      setSelected({ name, pct })
-      setSelectedLayer(null)
-    }
-  }, [])
+  if (!state) return <Navigate to="/" replace />
+
 
   return (
     <div style={{ position: 'relative', height: '100vh', width: '100vw', background: MAP_BG }}>
@@ -454,11 +498,15 @@ export default function MapPage() {
             zoomControl={false}
             attributionControl={false}
           >
-            <MapController selected={selected} selectedLayer={selectedLayer} onReset={handleReset} regionBounds={region ? REGION_BOUNDS[region] : undefined} zoomToRegionTrigger={zoomToRegionTrigger} />
+            <MapController selected={selected} selectedLayer={selectedLayer} onReset={handleReset} regionBounds={mergeRegionBounds(selectedRegions)} zoomToRegionTrigger={zoomToRegionTrigger} />
             <GeoJSON ref={geoJsonRef} data={geoData} style={featureStyle} onEachFeature={onEachFeature} />
           </MapContainer>
 
-          <Leaderboard ranked={ranked} selected={selected} onSelect={handleLeaderboardSelect} region={region} />
+          <Leaderboard ranked={ranked} selected={selected} onSelect={handleLeaderboardSelect} region={
+            selectedRegions.length === 1 ? selectedRegions[0]
+            : selectedRegions.length > 1 ? `${selectedRegions.length} regions`
+            : undefined
+          } />
 
           {/* Gradient legend */}
           <div style={{

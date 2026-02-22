@@ -106,9 +106,11 @@ def populate_db(db_path):
         geom = shape(feature["geometry"])
         feature_json = json.dumps({
             "ons_code": ons_code,
+            "lad_name": raw_name,
             "council_name": council.name,
             "council_id": council.id,
-            "geometry": feature["geometry"],
+            "region": region,
+            "polygon": feature["geometry"],
         })
         records.append((ons_code, raw_name, council.name, council.id, region, geom.wkb, feature_json))
 
@@ -128,9 +130,11 @@ def populate_db(db_path):
 
         feature_json = json.dumps({
             "ons_code": ons_code,
+            "lad_name": merge_key,
             "council_name": council.name,
             "council_id": council.id,
-            "geometry": mapping(merged_geom),
+            "region": region,
+            "polygon": mapping(merged_geom),
         })
         records.append((ons_code, merge_key, council.name, council.id, region, merged_geom.wkb, feature_json))
 
