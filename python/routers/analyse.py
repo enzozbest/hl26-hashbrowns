@@ -1,9 +1,7 @@
 import logging
-import os
 import uuid
 from pathlib import Path
 
-import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -18,7 +16,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/analyse", tags=["analyse"])
 
 REPORTS_DIR = Path(__file__).resolve().parent.parent / "reports"
-ORACLE_URL = os.getenv("ORACLE_URL", "http://localhost:8000")
 
 
 class AnalyseRequest(BaseModel):
@@ -50,31 +47,40 @@ def analyse(body: AnalyseRequest, background_tasks: BackgroundTasks):
 
 
 def _predict_scores(prompt: str) -> list[dict]:
-    """Call the planning-oracle /predict endpoint and return ranked council scores."""
-    try:
-        resp = httpx.post(
-            f"{ORACLE_URL}/predict",
-            json={"proposal_text": prompt},
-            timeout=30.0,
-        )
-        resp.raise_for_status()
-    except httpx.HTTPError as exc:
-        logger.error("Planning oracle request failed: %s", exc)
+    """Call the planning-oracle pipeline directly and return ranked council scores."""
+    import neural_network.inference.api as nn_api
+
+    if nn_api._pipeline is None:
         raise HTTPException(
             status_code=502,
-            detail=f"Planning oracle unavailable: {exc}",
+            detail="Planning oracle pipeline not loaded",
         )
 
-    data = resp.json()
-    result = data.get("result", {})
+    try:
+        result = nn_api._pipeline.predict(prompt)
+    except Exception as exc:
+        logger.error("Planning oracle prediction failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Planning oracle prediction failed: {exc}",
+        )
 
-    # Return the NN's ranked councils with scores scaled to 0-100.
     return [
         {
-            "council_id": council["council_id"],
-            "score": round(council["score"] * 100, 1),
+            "council_id": council.council_id,
+            "council_name": council.council_name,
+            "score": round(council.score * 100, 1),
+            "indicators": [
+                {
+                    "name": ind.display_name or ind.name,
+                    "value": ind.value,
+                    "contribution": ind.contribution,
+                    "direction": ind.direction,
+                }
+                for ind in council.indicators[:5]
+            ],
         }
-        for council in result.get("top_councils", [])
+        for council in result.top_councils
     ]
 
 

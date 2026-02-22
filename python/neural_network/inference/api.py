@@ -10,7 +10,6 @@ Start the server::
 """
 
 from __future__ import annotations
-from main import app
 
 import logging
 from contextlib import asynccontextmanager
@@ -24,8 +23,7 @@ from neural_network.inference.pipeline import InferencePipeline, PredictionResul
 
 logger = logging.getLogger(__name__)
 
-# ── Lazy import to avoid hard FastAPI dependency at module level ──────────
-from fastapi import FastAPI, HTTPException
+from fastapi import HTTPException
 
 
 # ── Request / response models ────────────────────────────────────────────────
@@ -182,3 +180,54 @@ def _load_pipeline(settings: Optional[Settings] = None) -> InferencePipeline:
         settings=settings,
     )
 
+
+# ── Lifespan ─────────────────────────────────────────────────────────────────
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load the inference pipeline on startup."""
+    global _pipeline
+    try:
+        _pipeline = _load_pipeline()
+        logger.info("Inference pipeline ready")
+    except FileNotFoundError as exc:
+        logger.error(
+            "Cannot start: model artefacts not found (%s). "
+            "Run training first.",
+            exc,
+        )
+        _pipeline = None
+    yield
+    _pipeline = None
+
+
+# ── Prediction handler (registered by main.py) ──────────────────────────
+async def predict(request: PredictionRequest) -> PredictionResponse:
+    """Generate an approval probability prediction for a proposal.
+
+    Args:
+        request: Contains the free-text proposal description.
+
+    Returns:
+        Structured prediction with probability, council rankings,
+        and feature attributions.
+
+    Raises:
+        HTTPException: If the pipeline is not initialised or prediction fails.
+    """
+    if _pipeline is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Inference pipeline not initialised. Run training first.",
+        )
+    try:
+        result = _pipeline.predict(request.proposal_text)
+    except Exception as exc:
+        logger.exception("Prediction failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction failed: {exc}",
+        ) from exc
+
+    return PredictionResponse(result=result)
