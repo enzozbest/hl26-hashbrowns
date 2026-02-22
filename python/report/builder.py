@@ -11,20 +11,32 @@ Usage::
 
 from __future__ import annotations
 
+from typing import Optional
+
 import pandas as pd
 
 from data import query
-from report.models import CouncilContext, CouncilReport
+from report.models import CouncilContext, CouncilReport, OraclePrediction
 from report.sections import SECTIONS
+from report.sections.approval_prediction import ApprovalPredictionSection
 
 
-def build_report(council: str, year: str = "2023") -> CouncilReport:
+def build_report(
+    council: str,
+    year: str = "2023",
+    *,
+    oracle_prediction: Optional[OraclePrediction] = None,
+) -> CouncilReport:
     """Build a :class:`~report.models.CouncilReport` for the given council.
 
     Args:
         council:  Local authority name (case-insensitive partial match) or
                   ONS code (e.g. ``"E09000012"``).
         year:     Data vintage year.  Must match a year present in the DB.
+        oracle_prediction:  Optional output from the planning-oracle neural
+            network.  When provided, the *Approval Prediction* section is
+            populated with ML-based approval probabilities and council
+            rankings.  Pass ``None`` to omit the section gracefully.
 
     Returns:
         A fully populated :class:`~report.models.CouncilReport`.
@@ -34,7 +46,14 @@ def build_report(council: str, year: str = "2023") -> CouncilReport:
     """
     ctx = _resolve_council(council, year)
     data = _load_data(year)
-    sections = [section.run(ctx, data) for section in SECTIONS]
+
+    sections = []
+    for section in SECTIONS:
+        if isinstance(section, ApprovalPredictionSection):
+            sections.append(section.run(ctx, data, oracle=oracle_prediction))
+        else:
+            sections.append(section.run(ctx, data))
+
     return CouncilReport(council=ctx, sections=sections)
 
 
