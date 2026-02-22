@@ -27,12 +27,13 @@ export async function fetchCouncils(): Promise<CouncilInfo[]> {
 }
 
 export async function submitAnalyse(
-  prompt: string,
+    council_ids: number[],
+    prompt: string
 ): Promise<AnalyseResponse> {
   const res = await fetch(`${API_BASE}/api/analyse`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ prompt }),
+    body:    JSON.stringify({ council_ids, prompt }),
   })
   if (!res.ok) throw new Error(`Analysis failed: ${res.status}`)
   return res.json()

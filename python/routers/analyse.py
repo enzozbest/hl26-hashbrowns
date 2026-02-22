@@ -22,6 +22,7 @@ ORACLE_URL = os.getenv("ORACLE_URL", "http://localhost:8001")
 
 
 class AnalyseRequest(BaseModel):
+    council_ids: list[int]
     prompt: str
 
 
@@ -30,6 +31,8 @@ def analyse(body: AnalyseRequest, background_tasks: BackgroundTasks):
     analysis_id = str(uuid.uuid4())
     output_dir = REPORTS_DIR / analysis_id
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.warning(body.prompt)
 
     # Call the planning-oracle neural network for approval scores.
     scores = _predict_scores(body.prompt)
