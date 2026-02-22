@@ -1,7 +1,9 @@
-import random
+import logging
+import os
 import uuid
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -11,41 +13,66 @@ from data.analysis_data.db import get_analysis, save_analysis
 from report.builder import build_report
 from report.renderer import render_pdf
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/analyse", tags=["analyse"])
 
 REPORTS_DIR = Path(__file__).resolve().parent.parent / "reports"
+ORACLE_URL = os.getenv("ORACLE_URL", "http://localhost:8001")
 
 
 class AnalyseRequest(BaseModel):
-    council_ids: list[int]
     prompt: str
 
 
 @router.post("")
 def analyse(body: AnalyseRequest, background_tasks: BackgroundTasks):
-    if not body.council_ids:
-        raise HTTPException(status_code=422, detail="ids must not be empty")
-
     analysis_id = str(uuid.uuid4())
     output_dir = REPORTS_DIR / analysis_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    scores = [
-        {
-            "council_id": id_,
-            "score": round(random.uniform(0, 100), 1)
-        }
-        for id_ in body.council_ids
-    ]
+    # Call the planning-oracle neural network for approval scores.
+    scores = _predict_scores(body.prompt)
 
     save_analysis(analysis_id, str(output_dir))
 
-    background_tasks.add_task(_generate_reports, body.council_ids, output_dir)
+    # Generate reports for the councils the NN ranked.
+    council_ids = [s["council_id"] for s in scores]
+    background_tasks.add_task(_generate_reports, council_ids, output_dir)
 
     return {
         "analysis_id": analysis_id,
         "scores": scores,
     }
+
+
+def _predict_scores(prompt: str) -> list[dict]:
+    """Call the planning-oracle /predict endpoint and return ranked council scores."""
+    try:
+        resp = httpx.post(
+            f"{ORACLE_URL}/predict",
+            json={"proposal_text": prompt},
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.error("Planning oracle request failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Planning oracle unavailable: {exc}",
+        )
+
+    data = resp.json()
+    result = data.get("result", {})
+
+    # Return the NN's ranked councils with scores scaled to 0-100.
+    return [
+        {
+            "council_id": council["council_id"],
+            "score": round(council["score"] * 100, 1),
+        }
+        for council in result.get("top_councils", [])
+    ]
 
 
 @router.get("/{analysis_id}/report")

@@ -82,21 +82,7 @@ export default function Home() {
         if (removedCouncils.length > 0)  parts.push(`exclude: ${removedCouncils.join(', ')}`)
         const query = parts.join(', ')
         try {
-            // Compute effective council IDs: (region councils − removed) ∪ added
-            const regionCouncilIds = councilData
-                .filter(c => c.region && regions.includes(c.region))
-                .map(c => c.council_id)
-            const addedIds = councilData
-                .filter(c => addedCouncils.includes(c.lad_name))
-                .map(c => c.council_id)
-            const removedIds = new Set(
-                councilData.filter(c => removedCouncils.includes(c.lad_name)).map(c => c.council_id)
-            )
-            const effectiveIds = [
-                ...regionCouncilIds.filter(id => !removedIds.has(id)),
-                ...addedIds,
-            ]
-            const data = await submitAnalyse(effectiveIds, query)
+            const data = await submitAnalyse(query)
             navigate('/map', {state: {query, analyseResults: data.scores, regions, addedCouncils, removedCouncils}})
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Failed to submit analysis'
