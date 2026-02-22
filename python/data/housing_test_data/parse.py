@@ -12,7 +12,6 @@ def parse_data():
     unmatched: set[str] = set()
 
     for path in sorted(DATA_DIR.glob("*.ods")):
-        year = path.stem  # e.g. "2023"
         df = pd.read_excel(path, engine="odf", header=None)
 
         # Rows 0-5 are title/header rows; data starts at row 6
@@ -31,7 +30,6 @@ def parse_data():
                 continue
 
             records.append((
-                str(year),
                 str(ons_code),
                 council.name,          # normalised area_name
                 council.id,            # council_id

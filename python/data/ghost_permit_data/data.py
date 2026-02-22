@@ -6,7 +6,7 @@ from data.ghost_permit_data.create_db import get_db_path
 def get_all_data():
     conn = sqlite3.connect(get_db_path())
     df = pd.read_sql_query(
-        "SELECT lpa_number, borough FROM ghost_permit_data",
+        "SELECT lpa_number, council_name FROM ghost_permit_data",
         conn
     )
     conn.close()
@@ -18,7 +18,7 @@ def match_data(df: pd.DataFrame):
     merged = df.merge(
         ghost_permits,
         left_on=["LPA Number", "Borough"],
-        right_on=["lpa_number", "borough"],
+        right_on=["lpa_number", "council_name"],
         how="left",
         indicator=True
     )

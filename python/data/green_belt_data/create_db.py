@@ -14,10 +14,10 @@ def init_db(db_path):
         CREATE TABLE IF NOT EXISTS green_belt (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             entity INTEGER,
-            name TEXT,
+            council_name TEXT,
             reference TEXT,
             green_belt_core TEXT,
-            local_authority_district TEXT,
+            ons_code TEXT,
             entry_date TEXT,
             start_date TEXT,
             end_date TEXT,
@@ -36,8 +36,8 @@ def insert_records(records, db_path):
 
     cursor.executemany("""
         INSERT INTO green_belt (
-            entity, name, reference, green_belt_core,
-            local_authority_district, entry_date, start_date, end_date,
+            entity, council_name, reference, green_belt_core,
+            ons_code, entry_date, start_date, end_date,
             quality, geometry
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, records)

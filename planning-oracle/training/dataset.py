@@ -391,7 +391,7 @@ def build_dataloaders(
         ``(train_loader, val_loader, test_loader)``
     """
     pin = torch.cuda.is_available()
-    workers = 4
+    workers = 0
 
     train_loader = DataLoader(
         train,

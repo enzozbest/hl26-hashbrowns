@@ -23,17 +23,18 @@ def parse_data():
         "entry-date": "entry_date",
         "start-date": "start_date",
         "green-belt-core": "green_belt_core",
-        "local-authority-district": "local_authority_district",
+        "local-authority-district": "ons_code",
+        "name": "council_name",
     })
 
     records = []
     for row in gdf.itertuples(index=False):
         records.append((
             row.entity,
-            row.name or None,
+            row.council_name or None,
             row.reference or None,
             row.green_belt_core or None,
-            row.local_authority_district or None,
+            row.ons_code or None,
             _date_str(row.entry_date),
             _date_str(row.start_date),
             _date_str(row.end_date),

@@ -23,7 +23,7 @@ train:
 ifndef COUNCILS
 	$(error COUNCILS is required — e.g. make train COUNCILS="1 2 3")
 endif
-	$(PYTHON) -m training.train \
+	PYTHONPATH=$(shell pwd) $(PYTHON) -m training.train \
 		--epochs $(EPOCHS) \
 		--batch-size $(BATCH_SIZE) \
 		--lr $(LR) \

@@ -186,7 +186,7 @@ class _Doc(BaseDocTemplate):
             rightMargin=MARGIN,
             topMargin=MARGIN,
             bottomMargin=MARGIN + 8 * mm,
-            title=f"Planning Intelligence Report — {report.council.local_authority_name}",
+            title=f"Planning Intelligence Report — {report.council.council_name}",
             author="Hashbrowns Planning Intelligence",
         )
         self._build_templates()
@@ -212,7 +212,7 @@ class _Doc(BaseDocTemplate):
         # Council name top-left
         canvas.setFont("Helvetica-Bold", 8)
         canvas.setFillColor(NAVY)
-        canvas.drawString(MARGIN, PAGE_H - MARGIN + 5 * mm, self._report.council.local_authority_name)
+        canvas.drawString(MARGIN, PAGE_H - MARGIN + 5 * mm, self._report.council.council_name)
         # Page number top-right
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(SLATE)
@@ -249,12 +249,11 @@ def _cover_page(report: CouncilReport, st: dict) -> list:
     generated = report.generated_at.strftime("%d %B %Y, %H:%M UTC")
     spacer_top = Spacer(1, PAGE_H * 0.42)
 
-    title = Paragraph(council.local_authority_name, st["cover_title"])
+    title = Paragraph(council.council_name, st["cover_title"])
     sub = Paragraph("Planning Intelligence Report", st["cover_sub"])
     meta_lines = [
         f"Region: {council.region_name}",
-        f"ONS Code: {council.local_authority_code}",
-        f"Data vintage: {council.year}",
+        f"ONS Code: {council.ons_code}",
         f"Generated: {generated}",
     ]
     meta = Paragraph(" &nbsp;&nbsp;|&nbsp;&nbsp; ".join(meta_lines), st["cover_meta"])
