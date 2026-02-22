@@ -377,6 +377,10 @@ class InferencePipeline:
         if not include_zero_contributions:
             indicators = [ind for ind in indicators if ind.contribution != 0.0]
 
+        # Filter out missingness indicators — they are not actionable
+        # and confuse end users ("Data not provided: …").
+        indicators = [ind for ind in indicators if not ind.name.startswith("missing_")]
+
         return indicators
 
     @staticmethod
