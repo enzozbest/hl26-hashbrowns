@@ -10,7 +10,6 @@ Start the server::
 """
 
 from __future__ import annotations
-from main import app
 
 import logging
 from contextlib import asynccontextmanager
@@ -24,8 +23,7 @@ from neural_network.inference.pipeline import InferencePipeline, PredictionResul
 
 logger = logging.getLogger(__name__)
 
-# ── Lazy import to avoid hard FastAPI dependency at module level ──────────
-from fastapi import FastAPI, HTTPException
+from fastapi import HTTPException
 
 
 # ── Request / response models ────────────────────────────────────────────────
@@ -204,8 +202,7 @@ async def lifespan(app: FastAPI):
     _pipeline = None
 
 
-# ── Prediction Route ──────────────────────────────────────────────────────────────────────
-@app.post("/predict", response_model=PredictionResponse)
+# ── Prediction handler (registered by main.py) ──────────────────────────
 async def predict(request: PredictionRequest) -> PredictionResponse:
     """Generate an approval probability prediction for a proposal.
 
