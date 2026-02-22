@@ -5,9 +5,11 @@ description = "Hashbrowns planning data analysis package"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "geopandas>=1.1.2",
     "httpx==0.28.*",
-    "pandas>=3.0.1",
     "odfpy>=1.4.1",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.1",
     "pydantic>=2.10",
     "pydantic-settings>=2",
     "pyproj==3.7.*",

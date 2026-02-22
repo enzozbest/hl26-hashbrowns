@@ -7,3 +7,7 @@ Can be used to identify things a council are willing to approve, and have not be
 ## Housing Test Data
 Data that shows, for each borough, how many houses they should make, and how many they have.
 Boroughs severely under target are more likely to approve housing applications.
+
+## Flood Data
+Data that shows the flood risk for a given location.
+Can be joined with our planning permission data to identify areas that are more likely to be approved for development.

@@ -5,6 +5,7 @@ object used throughout the application.
 """
 
 from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,9 +22,10 @@ class Settings(BaseSettings):
         text_encoder_model: HuggingFace model ID for sentence-transformers.
     """
 
-    # API settings
-    planning_api_base_url: str = 'https://ibex.seractech.co.uk'
-    planning_api_auth_token: str = ""
+    # Ibex API settings (uses the working IbexClient connector)
+    ibex_api_key: str = ""
+    ibex_base_url: str = "https://ibex.seractech.co.uk"
+    ibex_max_concurrency: int = 10
 
     # Model hyperparameters
     learning_rate: float = 0.001

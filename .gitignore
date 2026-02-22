@@ -457,3 +457,6 @@ $RECYCLE.BIN/
 
 #Claude
 .claude/
+
+python/data/planning.db
+python/data/flood_data/Flood_Map_for_Planning_Flood_Zones.gpkg
