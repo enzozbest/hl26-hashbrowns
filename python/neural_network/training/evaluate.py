@@ -31,9 +31,9 @@ from sklearn.metrics import (
 )
 from torch.utils.data import DataLoader
 
-from model.approval_model import ApprovalModel
-from model.calibration import TemperatureScaler
-from training.train import compute_ece
+from neural_network.model.approval_model import ApprovalModel
+from neural_network.model.calibration import TemperatureScaler
+from neural_network.training.train import compute_ece
 
 logger = logging.getLogger(__name__)
 
