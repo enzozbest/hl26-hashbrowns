@@ -157,25 +157,18 @@ class InferencePipeline:
         top_councils = []
         first_logit = None
 
-        for cid, score, ranker_indicators in ranked:
+        for cid, score in ranked:
             stats = self._council_stats.get(cid)
             name = stats.council_name if stats else None
 
             # Build council-specific features for the neural network.
             council_features = self._build_council_features(cid)
 
-            # Compute gradient-based attributions from the neural net.
-            nn_indicators = self._compute_nn_indicators(
+            # Compute gradient×input attributions from the neural net
+            # for all structured features (application + council branches).
+            indicators = self._compute_nn_indicators(
                 text_embedding, app_features, council_features,
             )
-
-            # Merge ranker indicators (stage-1 scoring components) with
-            # neural-net indicators (stage-2 learned feature importance).
-            # Ranker indicators come first as they drive the ranking;
-            # NN indicators follow as they reflect approval prediction.
-            all_indicators = [
-                FeatureIndicator(**ind) for ind in ranker_indicators
-            ] + nn_indicators
 
             # Capture the logit from the top-ranked council for the
             # overall approval probability.
@@ -193,7 +186,7 @@ class InferencePipeline:
                     council_id=cid,
                     council_name=name,
                     score=score,
-                    indicators=all_indicators,
+                    indicators=indicators,
                 ),
             )
 
@@ -252,19 +245,17 @@ class InferencePipeline:
         text_embedding: torch.Tensor,
         app_features: torch.Tensor,
         council_features: torch.Tensor,
-        top_k: int = 6,
     ) -> list[FeatureIndicator]:
         """Compute gradient×input attributions from the neural network.
 
-        Returns the *top_k* most influential structured features (from
-        the application and council branches), ranked by absolute
-        contribution.
+        Returns all structured features (application + council branches)
+        ranked by absolute contribution.  Every input feature the model
+        used is included so consumers can decide how many to show.
 
         Args:
             text_embedding: ``(1, text_embed_dim)``
             app_features: ``(1, num_app_features)``
             council_features: ``(1, num_council_features)``
-            top_k: Number of top indicators to return.
 
         Returns:
             List of :class:`FeatureIndicator` sorted by
@@ -310,9 +301,9 @@ class InferencePipeline:
                 direction="positive" if attr_val >= 0 else "negative",
             ))
 
-        # Sort by absolute contribution and keep top_k.
+        # Sort by absolute contribution — most influential first.
         indicators.sort(key=lambda x: abs(x.contribution), reverse=True)
-        return indicators[:top_k]
+        return indicators
 
     # ── feature building helpers ─────────────────────────────────────
 
