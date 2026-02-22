@@ -279,6 +279,10 @@ class CouncilStats(BaseModel):
     period_end: Optional[date] = Field(
         None, description="Stats period end date (injected by client)"
     )
+    region: Optional[str] = Field(
+        None,
+        description="Canonical UK region name (e.g. 'London', 'South East'), injected by client",
+    )
 
 
 # ── Request body models ─────────────────────────────────────────────────────

@@ -125,6 +125,22 @@ def _load_pipeline(settings: Optional[Settings] = None) -> InferencePipeline:
             ckpt_dir,
         )
 
+    # Back-fill region for council stats that were saved before the
+    # region field was added.
+    try:
+        from data.regions import COUNCIL_REGION
+
+        n_filled = 0
+        for cs in council_stats.values():
+            if cs.region is None and cs.council_name:
+                cs.region = COUNCIL_REGION.get(cs.council_name)
+                if cs.region:
+                    n_filled += 1
+        if n_filled:
+            logger.info("Back-filled region for %d councils", n_filled)
+    except ImportError:
+        logger.debug("data.regions not available — skipping region back-fill")
+
     # ── Assemble pipeline ────────────────────────────────────────
     return InferencePipeline(
         parser=ProposalParser(),
