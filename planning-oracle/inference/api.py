@@ -110,13 +110,14 @@ def _load_pipeline(settings: Optional[Settings] = None) -> InferencePipeline:
     logger.info("Feature extractors loaded")
 
     # ── Load council stats from JSON artefact ────────────────────
-    council_stats: dict[str, CouncilStats] = {}
+    council_stats: dict[int, CouncilStats] = {}
     stats_path = ckpt_dir / "council_stats.json"
     try:
         raw = json.loads(stats_path.read_text())
         for entry in raw:
             cs = CouncilStats(**entry)
-            council_stats[cs.council_id] = cs
+            if cs.council_id is not None:
+                council_stats[cs.council_id] = cs
         logger.info("Loaded %d council stats from %s", len(council_stats), stats_path)
     except FileNotFoundError:
         logger.warning(

@@ -44,7 +44,7 @@ def run_train(
     batch_size: int,
     lr: float,
     checkpoint_dir: str,
-    council_ids: list[str],
+    council_ids: list[int],
     date_from: str,
     date_to: str,
 ) -> dict:
@@ -82,7 +82,7 @@ def run_train(
 
 def run_calibrate(
     checkpoint_dir: str,
-    council_ids: list[str],
+    council_ids: list[int],
     date_from: str,
     date_to: str,
 ) -> None:
@@ -150,7 +150,7 @@ def run_calibrate(
 def run_evaluate(
     checkpoint_dir: str,
     output_dir: str,
-    council_ids: list[str],
+    council_ids: list[int],
     date_from: str,
     date_to: str,
 ) -> dict:
@@ -244,8 +244,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     # Data source options
     p.add_argument(
-        "--councils", nargs="+", default=[],
-        help="Council IDs to fetch data for",
+        "--councils", nargs="+", type=int, default=[],
+        help="Council IDs (integers) to fetch data for",
     )
     p.add_argument("--date-from", default="2020-01-01", help="Search start date (default: 2020-01-01)")
     p.add_argument("--date-to", default="2025-12-31", help="Search end date (default: 2025-12-31)")

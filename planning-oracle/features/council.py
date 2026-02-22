@@ -43,7 +43,7 @@ class CouncilFeatureExtractor:
 
     Features produced (all ``Float64``):
 
-    * ``overall_approval_rate``
+    * ``overall_approval_rate``  — normalised to 0-1
     * ``activity_level_encoded``  — ordinal (low=0, medium=1, high=2)
     * ``total_applications_per_year``
     * ``log_total_applications``
@@ -121,29 +121,38 @@ class CouncilFeatureExtractor:
         """Temporal-join council features onto an application DataFrame.
 
         For each application, selects the council-feature row whose
-        ``period_end ≤ date_received`` is maximised (closest preceding
-        window).  Then derives the two per-project-type columns:
+        ``period_end <= date_received`` is maximised (closest preceding
+        window).  If ``period_end`` is null on the council features, a
+        regular left join on ``council_id`` is used instead.
+
+        Then derives the two per-project-type columns:
 
         * ``approval_rate_by_matching_project_type`` — falls back to the
-          council's overall rate (per-type rates are not in the stats
-          endpoint; this column is ready for enrichment from other
-          sources).
+          council's overall rate.
         * ``avg_decision_time_by_matching_project_type`` — looked up from
           the ``avg_dt_<project_type>`` columns.
 
         Args:
-            app_df: Application DataFrame (must contain ``council_id``,
-                ``date_received``, and ``project_type``).
+            app_df: Application DataFrame (must contain ``council_id``
+                and ``date_received``; ``project_type`` is optional).
             council_features: Output of :meth:`fit_transform` /
                 :meth:`transform`.
 
         Returns:
             *app_df* with council-feature columns appended.
         """
+        # Ensure date_received exists (may be aliased from application_date).
         if "date_received" not in app_df.columns:
-            raise ValueError("app_df must contain a 'date_received' column")
+            if "application_date" in app_df.columns:
+                app_df = app_df.with_columns(
+                    pl.col("application_date").alias("date_received"),
+                )
+            else:
+                raise ValueError(
+                    "app_df must contain a 'date_received' or 'application_date' column"
+                )
 
-        # Cast dates if stored as strings
+        # Cast dates if stored as strings.
         app = app_df.clone()
         feat = council_features.clone()
         if app["date_received"].dtype == pl.Utf8:
@@ -151,17 +160,40 @@ class CouncilFeatureExtractor:
         if "period_end" in feat.columns and feat["period_end"].dtype == pl.Utf8:
             feat = feat.with_columns(pl.col("period_end").str.to_date())
 
-        # Sort — required by join_asof
-        app = app.sort("date_received")
-        feat = feat.sort("period_end")
+        # Ensure council_id types match (both as strings).
+        if "council_id" in app.columns:
+            app = app.with_columns(pl.col("council_id").cast(pl.Utf8))
+        if "council_id" in feat.columns:
+            feat = feat.with_columns(pl.col("council_id").cast(pl.Utf8))
 
-        merged = app.join_asof(
-            feat,
-            left_on="date_received",
-            right_on="period_end",
-            by="council_id",
-            strategy="backward",
+        # Decide between temporal join_asof and simple left join.
+        has_period_end = (
+            "period_end" in feat.columns
+            and feat["period_end"].null_count() < len(feat)
         )
+
+        if has_period_end:
+            # Sort — required by join_asof.
+            app = app.sort("date_received")
+            feat = feat.sort("period_end")
+
+            merged = app.join_asof(
+                feat,
+                left_on="date_received",
+                right_on="period_end",
+                by="council_id",
+                strategy="backward",
+            )
+        else:
+            # No temporal info — plain left join on council_id.
+            # Drop period_end from feat if present (all nulls) to avoid
+            # conflicts.
+            drop_cols = [
+                c for c in ["period_end"] if c in feat.columns
+            ]
+            if drop_cols:
+                feat = feat.drop(drop_cols)
+            merged = app.join(feat, on="council_id", how="left")
 
         # ── per-project-type approval rate (fallback to overall) ──────
         merged = merged.with_columns(
@@ -171,7 +203,7 @@ class CouncilFeatureExtractor:
         )
 
         # ── per-project-type avg decision time ────────────────────────
-        if self._known_project_types:
+        if self._known_project_types and "project_type" in merged.columns:
             expr: pl.Expr = pl.lit(None, dtype=pl.Float64)
             for pt in self._known_project_types:
                 col_name = f"avg_dt_{self._safe_name(pt)}"
@@ -213,26 +245,30 @@ class CouncilFeatureExtractor:
 
         for row in rows:
             out: dict = {
-                "council_id": row["council_id"],
+                "council_id": str(row["council_id"]) if row.get("council_id") is not None else "",
                 "period_end": row.get("period_end"),
             }
 
-            # overall approval rate
-            out["overall_approval_rate"] = float(row.get("approval_rate") or 0.0)
+            # Overall approval rate — API returns 0-100, normalise to 0-1.
+            raw_rate = row.get("approval_rate")
+            if raw_rate is not None:
+                out["overall_approval_rate"] = float(raw_rate) / 100.0
+            else:
+                out["overall_approval_rate"] = 0.0
 
-            # activity level → ordinal
+            # Activity level → ordinal.
             level = (row.get("council_development_activity_level") or "").lower()
             out["activity_level_encoded"] = float(
                 self._activity_map.get(level, -1),
             )
 
-            # total applications
+            # Total applications.
             num_apps: dict = row.get("number_of_applications") or {}
             total = sum(num_apps.values()) if num_apps else 0
             out["total_applications_per_year"] = float(total)
             out["log_total_applications"] = float(np.log1p(total))
 
-            # residential proportion
+            # Residential proportion.
             res_count = sum(
                 v
                 for k, v in num_apps.items()
@@ -242,12 +278,12 @@ class CouncilFeatureExtractor:
                 res_count / total if total > 0 else 0.0
             )
 
-            # new homes
+            # New homes.
             out["new_homes_approved_per_year"] = float(
                 row.get("number_of_new_homes_approved") or 0,
             )
 
-            # per-project-type decision times → one column each
+            # Per-project-type decision times → one column each.
             avg_dt: dict = row.get("average_decision_time") or {}
             for pt in self._known_project_types:
                 col_name = f"avg_dt_{self._safe_name(pt)}"
@@ -260,7 +296,7 @@ class CouncilFeatureExtractor:
 
         result = pl.DataFrame(processed)
 
-        # Ensure period_end is Date type
+        # Ensure period_end is Date type.
         if "period_end" in result.columns and result["period_end"].dtype == pl.Utf8:
             result = result.with_columns(pl.col("period_end").str.to_date())
 

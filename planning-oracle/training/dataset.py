@@ -54,6 +54,9 @@ _LABEL_COL = "approved"
 _TRAIN_CUTOFF = date(2024, 1, 1)
 _VAL_CUTOFF = date(2025, 1, 1)
 
+# The date column used for temporal splits — matches the API field name.
+_DATE_COL = "application_date"
+
 
 # ── Dataset ──────────────────────────────────────────────────────────────────
 
@@ -134,7 +137,7 @@ class PlanningDataset(Dataset):
 
 def temporal_split(
     df: pl.DataFrame,
-    date_column: str = "date_received",
+    date_column: str = _DATE_COL,
     *,
     train_cutoff: date = _TRAIN_CUTOFF,
     val_cutoff: date = _VAL_CUTOFF,
@@ -190,7 +193,7 @@ async def build_datasets(
     app_extractor: ApplicationFeatureExtractor,
     council_extractor: CouncilFeatureExtractor,
     *,
-    council_ids: list[str],
+    council_ids: list[int],
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     checkpoint_dir: Optional[str] = None,
@@ -214,7 +217,7 @@ async def build_datasets(
             (will be fitted on the train split).
         council_extractor: Un-fitted :class:`CouncilFeatureExtractor`
             (will be fitted on the council stats).
-        council_ids: List of council identifiers to fetch data for.
+        council_ids: List of council identifier integers.
         date_from: Optional ISO-8601 start date for the search window.
         date_to: Optional ISO-8601 end date for the search window.
         checkpoint_dir: If provided, save council stats JSON here for
@@ -229,10 +232,10 @@ async def build_datasets(
     all_apps: list[PlanningApplication] = []
     for cid in council_ids:
         apps = await client.search_all_pages(
-            cid, date_from=date_from, date_to=date_to,
+            [cid], date_from=date_from, date_to=date_to,
         )
         all_apps.extend(apps)
-        logger.info("  %s: %d applications", cid, len(apps))
+        logger.info("  %d: %d applications", cid, len(apps))
 
     logger.info("Fetching council stats …")
     all_stats: list[CouncilStats] = []
@@ -306,7 +309,10 @@ async def build_datasets(
 
     # ── 5. Text embeddings ────────────────────────────────────────────
     def _embed(raw_split: pl.DataFrame) -> np.ndarray:
-        texts = raw_split["description"].fill_null("").to_list()
+        # The API field is "proposal"; _prepare() aliases it to
+        # "description", but we read from the raw split here.
+        col_name = "proposal" if "proposal" in raw_split.columns else "description"
+        texts = raw_split[col_name].fill_null("").to_list()
         return text_embedder.embed_batch(texts)
 
     logger.info("Computing text embeddings …")

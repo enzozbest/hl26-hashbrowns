@@ -206,7 +206,7 @@ async def train_model(
     config: Settings,
     client: PlanningAPIClient,
     *,
-    council_ids: list[str],
+    council_ids: list[int],
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
 ) -> tuple[ApprovalModel, dict]:
@@ -407,8 +407,8 @@ def main(argv: list[str] | None = None) -> None:
         help="Checkpoint directory (overrides config)",
     )
     parser.add_argument(
-        "--councils", nargs="+", default=[],
-        help="Council IDs to fetch data for",
+        "--councils", nargs="+", type=int, default=[],
+        help="Council IDs (integers) to fetch data for",
     )
     parser.add_argument(
         "--date-from", default=None,

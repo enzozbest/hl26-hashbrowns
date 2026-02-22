@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 class CouncilResult(BaseModel):
     """A single council in the ranked list."""
 
-    council_id: str
+    council_id: int
     council_name: Optional[str] = None
     score: float = Field(..., description="Approval affinity score (0-1)")
 
@@ -88,7 +88,7 @@ class InferencePipeline:
         council_ranker: CouncilRanker,
         model: ApprovalModel,
         calibrator: TemperatureScaler,
-        council_stats: dict[str, CouncilStats],
+        council_stats: dict[int, CouncilStats],
         settings: Optional[Settings] = None,
     ) -> None:
         self._parser = parser
@@ -258,7 +258,7 @@ class InferencePipeline:
         return torch.as_tensor(arr)
 
     def _build_council_features(
-        self, council_id: Optional[str],
+        self, council_id: Optional[int],
     ) -> torch.Tensor:
         """Build council feature tensor for the top-ranked council.
 
@@ -272,9 +272,11 @@ class InferencePipeline:
 
         stats = self._council_stats[council_id]
 
-        # Match the order in _COUNCIL_FEATURE_COLS from dataset.py
+        # Match the order in _COUNCIL_FEATURE_COLS from dataset.py.
+        # API returns approval_rate as 0-100; normalise to 0-1.
+        approval_rate_norm = (stats.approval_rate or 0.0) / 100.0
         features: list[float] = [
-            stats.approval_rate or 0.0,
+            approval_rate_norm,
             {"low": 0.0, "medium": 1.0, "high": 2.0}.get(
                 (stats.council_development_activity_level or "").lower(), 0.0,
             ),
@@ -288,7 +290,7 @@ class InferencePipeline:
             ),
             0.0,  # residential_proportion (would need full computation)
             float(stats.number_of_new_homes_approved or 0),
-            stats.approval_rate or 0.0,  # approval_rate_by_matching_project_type
+            approval_rate_norm,  # approval_rate_by_matching_project_type
             0.0,  # avg_decision_time_by_matching_project_type
         ]
 

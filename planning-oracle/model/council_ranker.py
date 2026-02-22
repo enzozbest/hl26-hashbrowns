@@ -78,9 +78,9 @@ class CouncilRanker:
     def rank_councils(
         self,
         intent: ProposalIntent,
-        council_stats: dict[str, CouncilStats],
+        council_stats: dict[int, CouncilStats],
         top_k: int = 15,
-    ) -> list[tuple[str, float]]:
+    ) -> list[tuple[int, float]]:
         """Score and rank councils for a parsed proposal.
 
         Args:
@@ -99,12 +99,13 @@ class CouncilRanker:
         project_key = _PROJECT_TYPE_MAP.get(intent.project_type, "residential")
 
         # ── collect raw values for normalisation ─────────────────────
-        raw_scores: list[tuple[str, float, float, float, float]] = []
+        raw_scores: list[tuple[int, float, float, float, float]] = []
         all_speeds: list[float] = []
         all_volumes: list[float] = []
 
         for cid, stats in council_stats.items():
-            approval = stats.approval_rate or 0.0
+            # API returns approval_rate as 0-100 percentage; normalise to 0-1.
+            approval = (stats.approval_rate or 0.0) / 100.0
 
             # Decision speed for the relevant project type
             speed = 0.0
@@ -128,7 +129,7 @@ class CouncilRanker:
         max_speed = max(all_speeds) if all_speeds else 1.0
         max_volume = max(all_volumes) if all_volumes else 1.0
 
-        scored: list[tuple[str, float]] = []
+        scored: list[tuple[int, float]] = []
         for cid, approval, speed, activity, volume in raw_scores:
             # Faster is better → invert so lower days = higher score
             norm_speed = 1.0 - (speed / max_speed) if max_speed > 0 else 0.5

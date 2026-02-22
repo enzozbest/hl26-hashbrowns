@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import date
 from typing import Optional
 
 import httpx
@@ -48,7 +49,7 @@ class PlanningAPIClient:
     Use as an async context manager for automatic cleanup::
 
         async with PlanningAPIClient() as client:
-            apps = await client.search_applications("council-01")
+            apps = await client.search_applications([10])
 
     Parameters:
         settings: Application settings (injected for testability).
@@ -202,18 +203,37 @@ class PlanningAPIClient:
 
     # ── Endpoint 1: search applications ───────────────────────────────
 
-    async def _search_raw(self, request: SearchRequest) -> SearchResponse:
+    async def _search_raw(
+        self, request: SearchRequest, page: int, page_size: int,
+    ) -> SearchResponse:
         """Execute a search and return the full response envelope."""
         response = await self._request(
             "POST",
             "/search",
-            json=request.model_dump(by_alias=True, exclude_none=True),
+            json=request.model_dump(exclude_none=True),
         )
-        return SearchResponse.model_validate(response.json())
+        return SearchResponse.from_api_response(
+            response.json(), page=page, page_size=page_size,
+        )
+
+    @staticmethod
+    def _default_search_extensions() -> SearchExtensions:
+        """Return extensions with all data toggles enabled for training."""
+        return SearchExtensions(
+            appeals=True,
+            centre_point=True,
+            heading=True,
+            project_type=True,
+            num_new_houses=True,
+            document_metadata=True,
+            proposed_unit_mix=True,
+            proposed_floor_area=True,
+            num_comments_received=True,
+        )
 
     async def search_applications(
         self,
-        council_id: str,
+        council_id: list[int],
         *,
         page: int = 1,
         page_size: int = 100,
@@ -223,17 +243,18 @@ class PlanningAPIClient:
         extensions: Optional[SearchExtensions] = None,
         filters: Optional[SearchFilters] = None,
     ) -> list[PlanningApplication]:
-        """Search planning applications for a given council (single page).
+        """Search planning applications for given council(s) (single page).
 
         Args:
-            council_id: Local planning authority identifier.
+            council_id: List of council identifier integers.
             page: Page number (1-based).
             page_size: Number of results per page.
             date_from: ISO-8601 start date filter (inclusive).
             date_to: ISO-8601 end date filter (inclusive).
             date_range_type: Which date field the range applies to
                 (default ``"determined"``).
-            extensions: Optional extension toggles (documents, appeals, etc.).
+            extensions: Optional extension toggles.  Defaults to all
+                data-bearing extensions enabled.
             filters: Optional filters (application type, decision, keywords).
 
         Returns:
@@ -249,15 +270,15 @@ class PlanningAPIClient:
                 date_to=date_to,
                 date_range_type=date_range_type,
             ),
-            extensions=extensions or SearchExtensions(),
+            extensions=extensions or self._default_search_extensions(),
             filters=filters or SearchFilters(),
         )
-        result = await self._search_raw(request)
+        result = await self._search_raw(request, page=page, page_size=page_size)
         return result.applications
 
     async def search_all_pages(
         self,
-        council_id: str,
+        council_id: list[int],
         *,
         page_size: int = 100,
         date_from: Optional[str] = None,
@@ -272,7 +293,7 @@ class PlanningAPIClient:
         remaining page concurrently (bounded by the semaphore).
 
         Args:
-            council_id: Local planning authority identifier.
+            council_id: List of council identifier integers.
             page_size: Results per page.
             date_from: ISO-8601 start date filter (inclusive).
             date_to: ISO-8601 end date filter (inclusive).
@@ -283,7 +304,7 @@ class PlanningAPIClient:
         Returns:
             Complete list of ``PlanningApplication`` models across all pages.
         """
-        ext = extensions or SearchExtensions()
+        ext = extensions or self._default_search_extensions()
         flt = filters or SearchFilters()
 
         def _build_request(page: int) -> SearchRequest:
@@ -301,7 +322,9 @@ class PlanningAPIClient:
             )
 
         # Page 1 — discover total
-        first = await self._search_raw(_build_request(1))
+        first = await self._search_raw(
+            _build_request(1), page=1, page_size=page_size,
+        )
         all_applications: list[PlanningApplication] = list(first.applications)
         total = first.total_results
         total_pages = (total + page_size - 1) // page_size
@@ -317,7 +340,9 @@ class PlanningAPIClient:
 
         # Remaining pages — fetch concurrently
         async def _fetch_page(page: int) -> list[PlanningApplication]:
-            resp = await self._search_raw(_build_request(page))
+            resp = await self._search_raw(
+                _build_request(page), page=page, page_size=page_size,
+            )
             return resp.applications
 
         remaining = await asyncio.gather(
@@ -336,17 +361,18 @@ class PlanningAPIClient:
 
     async def lookup_applications(
         self,
-        applications: list[tuple[str, str]],
+        applications: list[tuple[int, str]],
         *,
         extensions: Optional[LookupExtensions] = None,
     ) -> list[PlanningApplication]:
         """Look up applications by ``(council_id, planning_reference)`` pairs.
 
         When ``extensions.documents`` is ``True`` the returned applications
-        will include ``DocumentMetadata`` entries with full S3 download links.
+        will include ``LookupDocument`` entries with full S3 download links.
 
         Args:
-            applications: Pairs of ``(council_id, planning_reference)``.
+            applications: Pairs of ``(council_id, planning_reference)``
+                where council_id is an integer.
             extensions: Optional extension toggles.
 
         Returns:
@@ -354,22 +380,22 @@ class PlanningAPIClient:
             document links.
         """
         request = LookupRequest(
-            applications=[list(pair) for pair in applications],
+            applications=[[cid, ref] for cid, ref in applications],
             extensions=extensions or LookupExtensions(),
         )
         response = await self._request(
             "POST",
             "/applications",
-            json=request.model_dump(by_alias=True, exclude_none=True),
+            json=request.model_dump(exclude_none=True),
         )
-        result = LookupResponse.model_validate(response.json())
+        result = LookupResponse.from_api_response(response.json())
         return result.applications
 
     # ── Endpoint 3: council stats ─────────────────────────────────────
 
     async def get_council_stats(
         self,
-        council_id: str,
+        council_id: int,
         *,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
@@ -380,13 +406,18 @@ class PlanningAPIClient:
         type, application counts, new-homes approved, and an overall
         development activity level.
 
+        The API does **not** return ``council_id`` or date bounds in the
+        response body, so this method injects them from the request
+        parameters.
+
         Args:
-            council_id: Local planning authority identifier.
+            council_id: Local planning authority identifier (integer).
             date_from: ISO-8601 start date for the stats window.
             date_to: ISO-8601 end date for the stats window.
 
         Returns:
-            A validated ``CouncilStats`` model.
+            A validated ``CouncilStats`` model with ``council_id`` and
+            ``period_start`` / ``period_end`` populated.
         """
         request = StatsRequest(
             input=StatsInput(
@@ -398,6 +429,15 @@ class PlanningAPIClient:
         response = await self._request(
             "POST",
             "/stats",
-            json=request.model_dump(by_alias=True, exclude_none=True),
+            json=request.model_dump(exclude_none=True),
         )
-        return CouncilStats.model_validate(response.json())
+        raw = response.json()
+
+        # Inject fields the API does not return.
+        raw["council_id"] = council_id
+        if date_from:
+            raw["period_start"] = date_from
+        if date_to:
+            raw["period_end"] = date_to
+
+        return CouncilStats.model_validate(raw)

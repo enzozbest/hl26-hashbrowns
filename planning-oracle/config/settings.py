@@ -5,7 +5,6 @@ object used throughout the application.
 """
 
 from functools import lru_cache
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,7 +22,7 @@ class Settings(BaseSettings):
     """
 
     # API settings
-    planning_api_base_url: str = "https://api.example.com/v1"
+    planning_api_base_url: str = 'https://ibex.seractech.co.uk'
     planning_api_auth_token: str = ""
 
     # Model hyperparameters

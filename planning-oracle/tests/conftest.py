@@ -11,10 +11,10 @@ import pytest
 from config.settings import Settings
 from data.schema import (
     CouncilStats,
-    DocumentMetadata,
     PlanningApplication,
     ProposedFloorArea,
     ProposedUnitMix,
+    SearchDocumentMetadata,
 )
 
 
@@ -36,36 +36,36 @@ def test_settings() -> Settings:
 def sample_application() -> PlanningApplication:
     """Return a minimal PlanningApplication for testing."""
     return PlanningApplication(
-        application_id="APP/2024/001",
-        council_id="council-01",
+        council_id=1,
         planning_reference="24/00123/FUL",
         council_name="Test Borough Council",
-        description="Erection of 10 residential dwellings with parking.",
-        address="1 Test Street",
-        postcode="SW1A 1AA",
-        ward="Central",
-        application_type="Full",
-        normalised_application_type="full",
+        proposal="Erection of 10 residential dwellings with parking.",
+        raw_address="1 Test Street, SW1A 1AA",
+        raw_application_type="Full",
+        normalised_application_type="full planning application",
         project_type="residential",
-        status="Decided",
-        decision="Approved",
+        raw_decision="Approved",
         normalised_decision="Approved",
-        date_received=date(2024, 3, 15),
-        date_validated=date(2024, 3, 20),
-        decision_date=date(2024, 6, 10),
+        application_date=date(2024, 3, 15),
+        decided_date=date(2024, 6, 10),
         num_new_houses=10,
-        proposed_units=ProposedUnitMix(
+        num_comments_received=5,
+        proposed_unit_mix=ProposedUnitMix(
             one_bed=2, two_bed=4, three_bed=3, four_plus_bed=1, affordable=3,
         ),
         proposed_floor_area=ProposedFloorArea(
-            gross_sqm=850.0, net_sqm=720.0, use_class="C3",
+            gross_internal_area_to_add_sqm=850.0,
+            existing_gross_floor_area_sqm=0.0,
+            proposed_gross_floor_area_sqm=850.0,
+            floor_area_to_be_lost_sqm=0.0,
+            floor_area_to_be_gained_sqm=850.0,
         ),
-        documents=[
-            DocumentMetadata(
-                document_id="DOC-001",
-                title="Design & Access Statement",
-                document_type="DAS",
-                url="https://example.com/doc/001",
+        document_metadata=[
+            SearchDocumentMetadata(
+                document_type="APPLICATION_FORM",
+                description="Application Form",
+                document_link="https://example.com/doc/001",
+                date_published="2024-03-15",
             ),
         ],
     )
@@ -73,17 +73,20 @@ def sample_application() -> PlanningApplication:
 
 @pytest.fixture
 def sample_council_stats() -> CouncilStats:
-    """Return sample CouncilStats for testing."""
+    """Return sample CouncilStats for testing.
+
+    Note: approval_rate is 0-100 as returned by the API.
+    """
     return CouncilStats(
-        council_id="council-01",
+        council_id=1,
         council_name="Test Borough Council",
-        approval_rate=0.72,
-        refusal_rate=0.28,
+        approval_rate=72.0,
+        refusal_rate=28.0,
         average_decision_time={"residential": 65.3, "commercial": 45.0},
         number_of_applications={
-            "Full": 300,
-            "Outline": 120,
-            "Reserved Matters": 80,
+            "full planning application": 300,
+            "householder planning application": 120,
+            "lawful development": 80,
         },
         number_of_new_homes_approved=1200,
         council_development_activity_level="high",
@@ -110,43 +113,47 @@ def sample_labels() -> np.ndarray:
 def sample_applications_df() -> pl.DataFrame:
     """Return a Polars DataFrame with a mix of Approved/Refused applications."""
     approved = PlanningApplication(
-        application_id="APP/2024/001",
-        council_id="council-01",
+        council_id=1,
         planning_reference="24/00001/FUL",
-        normalised_application_type="full",
+        normalised_application_type="full planning application",
         project_type="residential",
         normalised_decision="Approved",
-        date_received=date(2024, 3, 15),
+        application_date=date(2024, 3, 15),
+        proposal="Erection of 10 dwellings",
         num_new_houses=10,
-        proposed_units=ProposedUnitMix(
+        proposed_unit_mix=ProposedUnitMix(
             one_bed=2, two_bed=4, three_bed=3, four_plus_bed=1, affordable=3,
         ),
-        proposed_floor_area=ProposedFloorArea(gross_sqm=850.0, net_sqm=720.0),
+        proposed_floor_area=ProposedFloorArea(
+            gross_internal_area_to_add_sqm=850.0,
+            proposed_gross_floor_area_sqm=850.0,
+            floor_area_to_be_gained_sqm=850.0,
+        ),
     )
     refused = PlanningApplication(
-        application_id="APP/2024/002",
-        council_id="council-01",
+        council_id=1,
         planning_reference="24/00002/OUT",
         normalised_application_type="outline",
         project_type="commercial",
         normalised_decision="Refused",
-        date_received=date(2024, 7, 1),
+        application_date=date(2024, 7, 1),
+        proposal="Change of use to commercial",
         num_new_houses=0,
     )
     pending = PlanningApplication(
-        application_id="APP/2024/003",
-        council_id="council-02",
+        council_id=2,
         planning_reference="24/00003/FUL",
-        normalised_application_type="full",
+        normalised_application_type="full planning application",
         project_type="residential",
         normalised_decision="Pending",
-        date_received=date(2024, 9, 10),
+        application_date=date(2024, 9, 10),
+        proposal="Erection of 5 dwellings",
         num_new_houses=5,
     )
     records = (
-        [approved.model_dump() for _ in range(10)]
-        + [refused.model_dump() for _ in range(8)]
-        + [pending.model_dump() for _ in range(2)]
+        [approved.model_dump(mode="json") for _ in range(10)]
+        + [refused.model_dump(mode="json") for _ in range(8)]
+        + [pending.model_dump(mode="json") for _ in range(2)]
     )
     return pl.DataFrame(records)
 
@@ -156,12 +163,12 @@ def sample_council_stats_df(
     sample_council_stats: CouncilStats,
 ) -> pl.DataFrame:
     """Return a Polars DataFrame of council stats (possibly multiple windows)."""
-    stats_2023 = sample_council_stats.model_dump()
+    stats_2023 = sample_council_stats.model_dump(mode="json")
     stats_2022 = dict(
         stats_2023,
-        approval_rate=0.68,
-        period_start=date(2022, 1, 1),
-        period_end=date(2022, 12, 31),
+        approval_rate=68.0,
+        period_start="2022-01-01",
+        period_end="2022-12-31",
         number_of_new_homes_approved=900,
     )
     return pl.DataFrame([stats_2022, stats_2023])

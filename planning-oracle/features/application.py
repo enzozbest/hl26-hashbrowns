@@ -19,8 +19,10 @@ import polars as pl
 
 _TWO_PI_OVER_12 = 2.0 * math.pi / 12.0
 
-# Columns that get a log1p transform.  If a column is absent from the
-# input DataFrame it is filled with 0 before the transform.
+# Columns that get a log1p transform.  These match the API response field
+# names as they appear on the PlanningApplication and ProposedFloorArea
+# models.  If a column is absent from the input DataFrame it is filled
+# with 0 before the transform.
 _LOG_COLS: list[str] = [
     "num_new_houses",
     "gross_internal_area_to_add_sqm",
@@ -42,11 +44,15 @@ _INDEX_COLS: list[str] = ["council_id", "planning_reference"]
 # Column used to derive the binary label.
 _LABEL_COL = "normalised_decision"
 
-# Mapping from ProposedFloorArea struct fields to the expected flat names.
-_FLOOR_AREA_RENAME: dict[str, str] = {
-    "gross_sqm": "proposed_gross_floor_area_sqm",
-    "net_sqm": "floor_area_to_be_gained_sqm",
-}
+# Mapping from ProposedFloorArea struct fields to the expected flat column
+# names used in _LOG_COLS.  These now match the actual API field names.
+_FLOOR_AREA_FIELDS: list[str] = [
+    "gross_internal_area_to_add_sqm",
+    "existing_gross_floor_area_sqm",
+    "proposed_gross_floor_area_sqm",
+    "floor_area_to_be_lost_sqm",
+    "floor_area_to_be_gained_sqm",
+]
 
 
 class ApplicationFeatureExtractor:
@@ -133,28 +139,36 @@ class ApplicationFeatureExtractor:
     def _prepare(df: pl.DataFrame) -> pl.DataFrame:
         """Flatten struct columns and ensure every expected column exists."""
 
-        # ── unnest proposed_units struct ──────────────────────────────
-        if "proposed_units" in df.columns:
-            for field in _UNIT_COLS + [_AFFORDABLE_COL]:
-                if field not in df.columns:
-                    df = df.with_columns(
-                        pl.col("proposed_units")
-                        .struct.field(field)
-                        .fill_null(0)
-                        .alias(field),
-                    )
-            df = df.drop("proposed_units")
+        # ── unnest proposed_unit_mix struct ─────────────────────────────
+        if "proposed_unit_mix" in df.columns:
+            col_dtype = df["proposed_unit_mix"].dtype
+            is_struct = isinstance(col_dtype, pl.Struct)
+            all_null = df["proposed_unit_mix"].null_count() == len(df)
+            if is_struct and not all_null:
+                for field in _UNIT_COLS + [_AFFORDABLE_COL]:
+                    if field not in df.columns:
+                        df = df.with_columns(
+                            pl.col("proposed_unit_mix")
+                            .struct.field(field)
+                            .fill_null(0)
+                            .alias(field),
+                        )
+            df = df.drop("proposed_unit_mix")
 
-        # ── unnest proposed_floor_area struct ─────────────────────────
+        # ── unnest proposed_floor_area struct ──────────────────────────
         if "proposed_floor_area" in df.columns:
-            for src, dst in _FLOOR_AREA_RENAME.items():
-                if dst not in df.columns:
-                    df = df.with_columns(
-                        pl.col("proposed_floor_area")
-                        .struct.field(src)
-                        .fill_null(0.0)
-                        .alias(dst),
-                    )
+            col_dtype = df["proposed_floor_area"].dtype
+            is_struct = isinstance(col_dtype, pl.Struct)
+            all_null = df["proposed_floor_area"].null_count() == len(df)
+            if is_struct and not all_null:
+                for field in _FLOOR_AREA_FIELDS:
+                    if field not in df.columns:
+                        df = df.with_columns(
+                            pl.col("proposed_floor_area")
+                            .struct.field(field)
+                            .fill_null(0.0)
+                            .alias(field),
+                        )
             df = df.drop("proposed_floor_area")
 
         # ── guarantee numeric columns exist (fill with 0) ────────────
@@ -168,11 +182,19 @@ class ApplicationFeatureExtractor:
 
         # ── guarantee index columns exist ─────────────────────────────
         if "planning_reference" not in df.columns:
-            src = "application_id" if "application_id" in df.columns else None
-            if src:
-                df = df.with_columns(pl.col(src).alias("planning_reference"))
-            else:
-                df = df.with_columns(pl.lit("").alias("planning_reference"))
+            df = df.with_columns(pl.lit("").alias("planning_reference"))
+
+        # ── ensure council_id is string for index purposes ────────────
+        if "council_id" in df.columns:
+            df = df.with_columns(pl.col("council_id").cast(pl.Utf8))
+
+        # ── map application_date → date_received if needed ────────────
+        if "date_received" not in df.columns and "application_date" in df.columns:
+            df = df.with_columns(pl.col("application_date").alias("date_received"))
+
+        # ── map proposal → description if needed ──────────────────────
+        if "description" not in df.columns and "proposal" in df.columns:
+            df = df.with_columns(pl.col("proposal").alias("description"))
 
         # ── cast date column if stored as string ──────────────────────
         if "date_received" in df.columns and df["date_received"].dtype == pl.Utf8:
