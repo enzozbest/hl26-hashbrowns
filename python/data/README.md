@@ -11,3 +11,11 @@ Boroughs severely under target are more likely to approve housing applications.
 ## Flood Data
 Data that shows the flood risk for a given location.
 Can be joined with our planning permission data to identify areas that are more likely to be approved for development.
+
+## Income Data
+Data that shows the average income for a given area.
+Areas with higher average income may be more lucrative.
+
+## Green Belt Data
+Geospatial data that shows where green belt land is located.
+Can be used per council in the report to show what percentage is green zone.
