@@ -24,7 +24,7 @@ from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -108,6 +108,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+router = APIRouter(prefix="", tags=["oracle"])
+
 
 # ---------------------------------------------------------------------------
 # Request / response models
@@ -147,7 +149,7 @@ async def _parse(query: str) -> ParsedIntent:
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/parse")
+@router.post("/api/parse")
 async def parse_endpoint(body: QueryRequest) -> dict[str, Any]:
     """Parse a natural language query into a structured ParsedIntent.
 
@@ -163,7 +165,7 @@ async def parse_endpoint(body: QueryRequest) -> dict[str, Any]:
     }
 
 
-@app.post("/api/plan")
+@router.post("/api/plan")
 async def plan_endpoint(body: QueryRequest) -> dict[str, Any]:
     """Parse intent + show what API queries *would* be made (dry run).
 
@@ -183,7 +185,7 @@ async def plan_endpoint(body: QueryRequest) -> dict[str, Any]:
     }
 
 
-@app.post("/api/search")
+@router.post("/api/search")
 async def search_endpoint(body: QueryRequest) -> dict[str, Any]:
     """Full pipeline: parse → orchestrate across all adapters → return results."""
     try:
@@ -198,7 +200,7 @@ async def search_endpoint(body: QueryRequest) -> dict[str, Any]:
     return results
 
 
-@app.post("/api/report")
+@router.post("/api/report")
 async def report_endpoint(body: QueryRequest) -> dict[str, Any]:
     """Due diligence report: parse → IBex → score → rank boroughs.
 
@@ -223,7 +225,7 @@ async def report_endpoint(body: QueryRequest) -> dict[str, Any]:
     }
 
 
-@app.post("/api/report/pdf")
+@router.post("/api/report/pdf")
 async def report_pdf_endpoint(body: QueryRequest) -> Response:
     """Generate a PDF due diligence report.
 
@@ -271,7 +273,7 @@ async def report_pdf_endpoint(body: QueryRequest) -> Response:
 #     return {"councils": councils, "count": len(councils)}
 
 
-@app.get("/api/adapters")
+@router.get("/api/adapters")
 async def adapters_endpoint() -> dict[str, Any]:
     """Return registered adapters and whether they have credentials configured."""
     adapters = []
@@ -297,7 +299,7 @@ async def adapters_endpoint() -> dict[str, Any]:
     return {"adapters": adapters}
 
 
-@app.get("/api/health")
+@router.get("/api/health")
 async def health_endpoint() -> dict[str, str]:
     return {"status": "ok"}
 
@@ -397,3 +399,35 @@ async def analyse_endpoint(body: AnalyseRequest) -> list[dict[str, Any]]:
 
     return results
 
+
+@router.post("/predict", response_model=PredictionResponse)
+async def predict(request: PredictionRequest) -> PredictionResponse:
+    """Generate an approval probability prediction for a proposal.
+
+    Args:
+        request: Contains the free-text proposal description.
+
+    Returns:
+        Structured prediction with probability, council rankings,
+        and feature attributions.
+
+    Raises:
+        HTTPException: If the pipeline is not initialised or prediction fails.
+    """
+    if _pipeline is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Inference pipeline not initialised. Run training first.",
+        )
+    try:
+        result = _pipeline.predict(request.proposal_text)
+    except Exception as exc:
+        logger.exception("Prediction failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction failed: {exc}",
+        ) from exc
+
+    return PredictionResponse(result=result)
+
+app.include_router(router)

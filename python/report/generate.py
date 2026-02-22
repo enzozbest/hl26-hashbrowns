@@ -12,7 +12,7 @@ from pathlib import Path
 
 from report import build_report, render_pdf
 
-council = sys.argv[1] if len(sys.argv) > 1 else "Hackney"
+council = sys.argv[1] if len(sys.argv) > 1 else "Wandsworth"
 
 print(f"Generating report for '{council}'...")
 report = build_report(council)
